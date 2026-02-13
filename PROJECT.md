@@ -26,12 +26,18 @@ Think: "Heroku for AI agents"
 - [x] Landing page live: "Your superfriends coming soon"
 
 ### 🔨 In Progress
-- [ ] Platform API — tenant provisioning, agent lifecycle, auth, metering
+- [ ] Platform API — needs database, testing, K8s integration
 
 ### ⏳ Next Up
 1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
-2. **Platform API** ← NOW
-3. **Dashboard UI** — signup, agent management, usage
+2. ~~Platform API scaffold~~ ✅ `/platform-api/`
+   - Hono + TypeScript
+   - Clerk JWT auth
+   - Drizzle ORM + PostgreSQL
+   - Neon provisioning service
+   - Tenant + Agent CRUD routes
+3. **Set up Platform DB** ← NEXT
+4. **Dashboard UI** — signup, agent management, usage
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace
@@ -95,6 +101,9 @@ Think: "Heroku for AI agents"
 | 2026-02-12 | Domain: myintell.ai | Short, memorable, .ai TLD fits |
 | 2026-02-12 | Cloudflare for DNS | Free tier, DDoS protection, easy API |
 | 2026-02-12 | Landing page on Helsinki server | Simple, no extra cost for "coming soon" |
+| 2026-02-12 | Platform API: Node/TS + Hono | Fast iteration for MVP, lightweight framework |
+| 2026-02-12 | Auth: Clerk | $0 to start, handles OAuth/magic links, fast integration |
+| 2026-02-12 | ORM: Drizzle | TypeScript-first, lightweight, good DX |
 
 ---
 

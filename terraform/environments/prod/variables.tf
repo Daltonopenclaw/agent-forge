@@ -56,7 +56,7 @@ variable "cluster_name" {
 variable "hetzner_location" {
   description = "Hetzner datacenter location"
   type        = string
-  default     = "fsn1" # Falkenstein (cheapest)
+  default     = "ash" # Falkenstein (cheapest)
 }
 
 variable "master_server_type" {

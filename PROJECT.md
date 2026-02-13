@@ -26,11 +26,11 @@ Think: "Heroku for AI agents"
 - [x] Landing page live: "Your superfriends coming soon"
 
 ### 🔨 In Progress
-- [ ] Nothing active
+- [ ] Platform API — tenant provisioning, agent lifecycle, auth, metering
 
 ### ⏳ Next Up
-1. **GitHub repo** — version control + CI/CD
-2. **Platform API** — tenant provisioning, agent lifecycle, auth, metering
+1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
+2. **Platform API** ← NOW
 3. **Dashboard UI** — signup, agent management, usage
 
 ### 🔮 Future
@@ -112,6 +112,214 @@ Think: "Heroku for AI agents"
 - Terraform: `/root/.openclaw/workspace/agent_forge/terraform/`
 - Landing page: `/var/www/myintell.ai/`
 - Cloudflare creds: 1Password → "Cloudflare - myintell.ai"
+
+---
+
+---
+
+## Architecture Rationale
+
+_The thinking behind our design decisions._
+
+### 1. Two-Tier Infrastructure (Shared + Per-Tenant)
+
+Expensive resources are shared, cheap resources are isolated:
+
+```
+SHARED (one-time cost, amortized)       PER-TENANT (scales with customers)
+├── Load Balancer / Ingress             ├── Container/Pod
+├── Database Cluster                    ├── Database (within cluster)
+├── Container Orchestrator              ├── Storage bucket
+├── Secrets Management                  ├── CDN distribution
+└── Networking (VPC)                    └── Routing rules
+```
+
+**K8s Translation:**
+
+| Your ECS Design | K3s Equivalent |
+|-----------------|----------------|
+| ECS Cluster (Fargate) | K3s cluster on Hetzner/AWS |
+| ALB (shared) | Traefik Ingress (built into K3s) |
+| Target Groups | K8s Services |
+| Task Definitions | Deployments + Pod specs |
+| ECR | Harbor (self-hosted) or still ECR |
+| Aurora Serverless | CockroachDB Serverless, Neon, or Postgres + PgBouncer |
+
+---
+
+### 2. Header-Based Multi-Tenant Routing
+
+One ingress serves all tenants using injected headers that can't be spoofed:
+
+```
+CloudFront adds: X-Tenant-Host: deepwork-tracker
+                        │
+                        ▼
+              ALB checks header + path
+                        │
+                        ▼
+              Routes to correct backend
+```
+
+**Traefik IngressRoute (per tenant):**
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: tenant-deepwork-tracker
+  namespace: tenants
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: "PathPrefix(`/api`) && Headers(`X-Tenant-Host`, `deepwork-tracker`)"
+      kind: Rule
+      services:
+        - name: deepwork-tracker-backend
+          port: 3000
+```
+
+**CDN:** Cloudflare in front of K3s ingress, injecting the tenant header.
+
+---
+
+### 3. Database Strategy: Shared Cluster, Isolated DBs
+
+- **Platform DB:** SQLite on persistent volume (cheap, simple)
+- **Tenant DBs:** Database-per-tenant within shared cluster
+
+**Options:**
+
+| Option | Cost (idle) | Cost (active) | Complexity |
+|--------|-------------|---------------|------------|
+| Neon (serverless Postgres) | $0 (auto-suspend) | ~$10/mo | Low |
+| CockroachDB Serverless | $0 (free tier) | ~$30/mo | Low |
+| Self-hosted Postgres + PgBouncer | ~$5/mo | ~$15/mo | Medium |
+| Supabase self-hosted | ~$10/mo | ~$20/mo | Medium |
+
+**Decision:** Neon for tenant DBs — same auto-pause behavior as Aurora Serverless but cheaper.
+
+---
+
+### 4. Scale-to-Zero for Tenant Workloads
+
+**KEDA (Kubernetes Event-Driven Autoscaling):**
+
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: tenant-deepwork-tracker
+spec:
+  scaleTargetRef:
+    name: deepwork-tracker-backend
+  minReplicaCount: 0  # Scale to zero!
+  maxReplicaCount: 3
+  triggers:
+    - type: prometheus
+      metadata:
+        serverAddress: http://prometheus:9090
+        metricName: http_requests_total
+        threshold: '1'
+        query: sum(rate(http_requests_total{service="deepwork-tracker"}[2m]))
+```
+
+When no traffic → pods scale to 0 → only pay for storage.
+
+**Cold start mitigation:** Keep a "warm pool" of generic containers that can be assigned to any tenant on first request (~2-3 second cold start vs 30+ seconds).
+
+---
+
+### 5. Agent Architecture Pattern
+
+Specialized agents with narrow toolsets work better than one agent with everything:
+
+```
+Main Orchestrator (OpenClaw + Claude)
+│
+├── coding-agent (Claude Code CLI)
+├── web-qa-agent (Playwright + Claude)
+├── mobile-qa-agent (Emulator + Maestro + Claude)
+├── deploy-agent (Terraform/Pulumi + Claude)
+├── infra-agent (K8s manifests + Claude)
+└── research-agent (web_search + Claude)
+```
+
+---
+
+### 6. Cost Comparison: DIY K3s vs Vercel/Supabase
+
+**Per-Tenant Costs:**
+
+| | Vercel + Supabase | DIY K3s (Hetzner) | DIY K3s (AWS) |
+|---|---|---|---|
+| Idle tenant | $25/mo (Supabase Pro) | ~$1-5/mo | ~$5-10/mo |
+| Active tenant | $45-70/mo | ~$5-25/mo | ~$30-50/mo |
+| Platform overhead | $0 | ~$50/mo (shared) | ~$100/mo (shared) |
+
+**Break-Even Analysis:**
+
+```
+Vercel/Supabase: $25/tenant × N tenants
+DIY K3s (Hetzner): $50 + ($3/tenant × N tenants)
+
+Break-even: 50 + 3N = 25N → N ≈ 2-3 tenants
+```
+
+DIY wins almost immediately if you can handle the ops overhead.
+
+---
+
+### 7. Full K3s Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    SHARED PLATFORM (Hetzner)                        │
+│                       ~$50-80/month base cost                       │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
+│  │ K3s Master   │  │ K3s Workers  │  │ Postgres (Platform DB)  │   │
+│  │ (CX21 $5/mo) │  │ (2x CX31     │  │ SQLite or small PG      │   │
+│  │              │  │  $20/mo)     │  │ instance                │   │
+│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
+│  │ Traefik      │  │ Harbor       │  │ Vault / Sealed Secrets  │   │
+│  │ Ingress      │  │ Registry     │  │ (credentials)           │   │
+│  │ (built-in)   │  │              │  │                         │   │
+│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │           Cloudflare (CDN + DNS + Header Injection)          │  │
+│  │  - *.myintell.ai → K3s Ingress                               │  │
+│  │  - Adds X-Tenant-Host header per subdomain                   │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                PER-TENANT (in shared cluster)                       │
+│                ~$1-5/month idle, ~$5-25 active                      │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
+│  │ Deployment   │  │ Service      │  │ Neon DB (auto-pause)    │   │
+│  │ (KEDA scaled │  │ (ClusterIP)  │  │ or DB in shared PG      │   │
+│  │  to 0)       │  │              │  │                         │   │
+│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
+│  │ R2 Bucket    │  │ IngressRoute │  │ Sealed Secret           │   │
+│  │ (Cloudflare, │  │ (tenant      │  │ (tenant credentials)    │   │
+│  │  S3-compat)  │  │  routing)    │  │                         │   │
+│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐  │
+│  │               Agent Workspace (PVC)                          │  │
+│  │  - /workspace (code, memory, config)                         │  │
+│  │  - Mounted into agent pods                                   │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 

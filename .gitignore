@@ -35,3 +35,6 @@ Thumbs.db
 # Temporary
 tmp/
 temp/
+node_modules
+dist
+.env

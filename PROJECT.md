@@ -26,17 +26,20 @@ Think: "Heroku for AI agents"
 - [x] Landing page live: "Your superfriends coming soon"
 
 ### 🔨 In Progress
-- [ ] Platform API — needs K8s integration, deploy to cluster
+- [ ] Deploy dashboard to Vercel
+- [ ] Connect dashboard to Platform API
 
 ### ⏳ Next Up
 1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
 2. ~~Platform API scaffold~~ ✅ `/platform-api/`
 3. ~~Platform DB~~ ✅ Neon (aws-us-east-1)
-   - Tables: tenants, agents, api_keys, usage_records
-   - Migrations applied
-   - Health check working
-4. **Dashboard UI** ← NEXT
-5. **Deploy to K3s cluster**
+4. ~~Dashboard UI~~ ✅ `/dashboard/` (Next.js + Clerk + shadcn)
+   - Landing page, auth, dashboard layout
+   - Agents list & create pages
+   - API client ready
+5. **Deploy dashboard to Vercel** ← NEXT
+6. **Deploy API to server**
+7. **Wire up end-to-end**
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace

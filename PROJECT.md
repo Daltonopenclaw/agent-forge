@@ -26,20 +26,21 @@ Think: "Heroku for AI agents"
 - [x] Landing page live: "Your superfriends coming soon"
 
 ### 🔨 In Progress
-- [ ] Deploy dashboard to Vercel
-- [ ] Connect dashboard to Platform API
+- [ ] Deploy Platform API
+- [ ] Wire dashboard to API
 
 ### ⏳ Next Up
 1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
 2. ~~Platform API scaffold~~ ✅ `/platform-api/`
 3. ~~Platform DB~~ ✅ Neon (aws-us-east-1)
-4. ~~Dashboard UI~~ ✅ `/dashboard/` (Next.js + Clerk + shadcn)
-   - Landing page, auth, dashboard layout
-   - Agents list & create pages
-   - API client ready
-5. **Deploy dashboard to Vercel** ← NEXT
-6. **Deploy API to server**
-7. **Wire up end-to-end**
+4. ~~Dashboard UI~~ ✅ `/dashboard/`
+5. ~~Deploy to Vercel~~ ✅ https://myintell.ai
+   - Custom domain configured
+   - Clerk auth working
+   - SSL via Vercel
+6. **Deploy Platform API** ← NEXT
+7. **Wire dashboard to API**
+8. **End-to-end testing**
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace

@@ -1,0 +1,74 @@
+# Agent Forge - Production Environment Variables
+# Copy this file to terraform.tfvars and fill in your values
+# DO NOT commit terraform.tfvars to git!
+
+# ============================================================================
+# REQUIRED - Infrastructure Providers
+# ============================================================================
+
+# Hetzner Cloud API token
+# Get from: https://console.hetzner.cloud/ → Security → API Tokens
+hetzner_token = "your-hetzner-api-token"
+
+# Cloudflare API token (needs DNS edit permissions for your zone)
+# Get from: https://dash.cloudflare.com/profile/api-tokens
+cloudflare_api_token = "your-cloudflare-api-token"
+
+# SSH public key for server access
+# Generate with: ssh-keygen -t ed25519 -C "agent-forge"
+ssh_public_key = "ssh-ed25519 AAAA... your-email@example.com"
+
+# Your domain (must be managed by Cloudflare)
+domain = "agentforge.dev"
+
+# Admin email for alerts and Let's Encrypt certificates
+admin_email = "admin@example.com"
+
+# ============================================================================
+# REQUIRED - Security
+# ============================================================================
+
+# PostgreSQL password (generate with: openssl rand -base64 32)
+postgres_password = "your-secure-postgres-password"
+
+# JWT secret for API authentication (generate with: openssl rand -base64 48)
+jwt_secret = "your-secure-jwt-secret-minimum-32-characters"
+
+# IPs allowed to SSH to servers (your IP address in CIDR notation)
+# Find your IP: curl ifconfig.me
+allowed_ssh_ips = ["1.2.3.4/32"]
+
+# ============================================================================
+# CLUSTER CONFIGURATION (Optional - defaults are fine for starting)
+# ============================================================================
+
+cluster_name       = "agent-forge"
+hetzner_location   = "fsn1" # fsn1 (Germany), nbg1 (Germany), hel1 (Finland), ash (US)
+master_server_type = "cx22" # 2 vCPU, 4GB RAM (~$4.50/mo)
+worker_server_type = "cx32" # 4 vCPU, 8GB RAM (~$9/mo)
+worker_count       = 2
+enable_monitoring  = true
+
+# ============================================================================
+# INTEGRATIONS (Optional - add as needed)
+# ============================================================================
+
+# Stripe (for billing)
+# stripe_secret_key     = "sk_live_..."
+# stripe_webhook_secret = "whsec_..."
+
+# Neon (for tenant databases)
+# neon_api_key    = "your-neon-api-key"
+# neon_project_id = "your-neon-project-id"
+
+# AI APIs (for agents)
+# openai_api_key    = "sk-..."
+# anthropic_api_key = "sk-ant-..."
+
+# ============================================================================
+# KUBERNETES AUTH (populated after cluster creation - leave empty initially)
+# ============================================================================
+
+# These are set after the cluster is created
+# kubeconfig_ca_cert_path = "~/.kube/agent-forge-ca.crt"
+# k3s_token               = "..."

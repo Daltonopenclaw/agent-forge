@@ -26,18 +26,17 @@ Think: "Heroku for AI agents"
 - [x] Landing page live: "Your superfriends coming soon"
 
 ### 🔨 In Progress
-- [ ] Platform API — needs database, testing, K8s integration
+- [ ] Platform API — needs K8s integration, deploy to cluster
 
 ### ⏳ Next Up
 1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
 2. ~~Platform API scaffold~~ ✅ `/platform-api/`
-   - Hono + TypeScript
-   - Clerk JWT auth
-   - Drizzle ORM + PostgreSQL
-   - Neon provisioning service
-   - Tenant + Agent CRUD routes
-3. **Set up Platform DB** ← NEXT
-4. **Dashboard UI** — signup, agent management, usage
+3. ~~Platform DB~~ ✅ Neon (aws-us-east-1)
+   - Tables: tenants, agents, api_keys, usage_records
+   - Migrations applied
+   - Health check working
+4. **Dashboard UI** ← NEXT
+5. **Deploy to K3s cluster**
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace
@@ -104,6 +103,8 @@ Think: "Heroku for AI agents"
 | 2026-02-12 | Platform API: Node/TS + Hono | Fast iteration for MVP, lightweight framework |
 | 2026-02-12 | Auth: Clerk | $0 to start, handles OAuth/magic links, fast integration |
 | 2026-02-12 | ORM: Drizzle | TypeScript-first, lightweight, good DX |
+| 2026-02-12 | Platform DB: Neon (aws-us-east-1) | Serverless, auto-pause, free tier, near Hetzner Ashburn |
+| 2026-02-12 | Postgres 17 | Latest stable |
 
 ---
 

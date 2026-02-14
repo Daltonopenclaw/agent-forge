@@ -152,9 +152,9 @@ output "cluster_info" {
 output "platform_urls" {
   description = "Platform service URLs"
   value = {
-    dashboard = module.platform_services.platform_url
-    api       = module.platform_services.api_url
-    grafana   = module.platform_services.grafana_url
+    dashboard = "https://myintell.ai"
+    api       = "https://api.myintell.ai"
+    grafana   = var.enable_monitoring ? "https://grafana.myintell.ai" : null
   }
 }
 
@@ -163,25 +163,20 @@ output "next_steps" {
   value       = <<-EOT
     
     ============================================================
-    Agent Forge Platform Deployed Successfully!
+    MyIntell Platform - K3s Cluster Deployed!
     ============================================================
     
     1. Get kubeconfig:
        ${module.k3s_cluster.kubeconfig_command}
     
     2. Verify cluster:
-       export KUBECONFIG=~/.kube/agent-forge.yaml
+       export KUBECONFIG=~/.kube/myintell.yaml
        kubectl get nodes
        kubectl get pods -A
     
     3. Access platform:
-       Dashboard: ${module.platform_services.platform_url}
-       API:       ${module.platform_services.api_url}
-       Grafana:   ${module.platform_services.grafana_url}
-    
-    4. Create a tenant:
-       cd terraform/environments/prod
-       terraform apply -target=module.tenant_demo
+       Dashboard: https://myintell.ai
+       API:       https://api.myintell.ai
     
     ============================================================
   EOT

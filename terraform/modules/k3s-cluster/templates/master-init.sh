@@ -43,6 +43,9 @@ sysctl --system
 # K3S INSTALLATION
 # ============================================================================
 
+# Detect private network interface (Hetzner uses enp7s0)
+PRIVATE_IFACE=$(ip route | grep "10.0.0.0/16" | awk '{print $3}' || echo "enp7s0")
+
 # Install K3s server (master)
 curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - server \
     --token="${k3s_token}" \
@@ -50,12 +53,10 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" sh -s - serv
     --advertise-address="${private_ip}" \
     --tls-san="${private_ip}" \
     --tls-san="$(curl -s http://169.254.169.254/hetzner/v1/metadata/public-ipv4)" \
-    --flannel-iface=ens10 \
+    --flannel-iface="$PRIVATE_IFACE" \
     --disable=servicelb \
-    --write-kubeconfig-mode=644 \
-    %{ if traefik_enabled }
     --disable=traefik \
-    %{ endif }
+    --write-kubeconfig-mode=644 \
     --cluster-cidr=10.42.0.0/16 \
     --service-cidr=10.43.0.0/16
 

@@ -8,9 +8,9 @@ variable "cluster_name" {
 }
 
 variable "hetzner_location" {
-  description = "Hetzner datacenter location"
+  description = "Hetzner datacenter location (ash=Ashburn VA, fsn1=Falkenstein, hel1=Helsinki)"
   type        = string
-  default     = "ash" # Falkenstein, Germany (cheapest)
+  default     = "ash" # Ashburn, VA - close to Neon us-east-1
 }
 
 variable "master_server_type" {

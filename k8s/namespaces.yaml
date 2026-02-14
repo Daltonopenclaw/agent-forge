@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myintell
+  labels:
+    app.kubernetes.io/name: myintell
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: myintell-agents
+  labels:
+    app.kubernetes.io/name: myintell-agents

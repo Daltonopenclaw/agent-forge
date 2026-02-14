@@ -39,7 +39,7 @@ resource "hcloud_network" "cluster" {
 resource "hcloud_network_subnet" "cluster" {
   network_id   = hcloud_network.cluster.id
   type         = "cloud"
-  network_zone = "eu-central"
+  network_zone = var.hetzner_location == "ash" ? "us-east" : (var.hetzner_location == "hil" ? "us-west" : "eu-central")
   ip_range     = var.subnet_cidr
 }
 
@@ -254,7 +254,7 @@ resource "cloudflare_record" "platform" {
   name    = "@"
   content = hcloud_load_balancer.ingress.ipv4
   type    = "A"
-  ttl     = 300
+  ttl     = 1  # Auto (required when proxied)
   proxied = true # Enable Cloudflare CDN
 }
 
@@ -264,16 +264,16 @@ resource "cloudflare_record" "wildcard" {
   name    = "*"
   content = hcloud_load_balancer.ingress.ipv4
   type    = "A"
-  ttl     = 300
+  ttl     = 1  # Auto (required when proxied)
   proxied = true # Enable Cloudflare CDN + header injection
 }
 
-# API subdomain (non-proxied for direct access if needed)
+# API subdomain
 resource "cloudflare_record" "api" {
   zone_id = data.cloudflare_zone.main.id
   name    = "api"
   content = hcloud_load_balancer.ingress.ipv4
   type    = "A"
-  ttl     = 300
+  ttl     = 1  # Auto (required when proxied)
   proxied = true
 }

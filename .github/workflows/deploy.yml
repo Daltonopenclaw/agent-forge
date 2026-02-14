@@ -1,0 +1,127 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'platform-api/**'
+      - 'dashboard/**'
+      - 'k8s/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  PLATFORM_API_IMAGE: ghcr.io/${{ github.repository }}/platform-api
+  DASHBOARD_IMAGE: ghcr.io/${{ github.repository }}/dashboard
+
+jobs:
+  build-platform-api:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.PLATFORM_API_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./platform-api
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  build-dashboard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DASHBOARD_IMAGE }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./dashboard
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_API_URL=https://api.myintell.ai
+
+  deploy:
+    needs: [build-platform-api, build-dashboard]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Deploy to K8s
+        run: |
+          # Update image tags to use SHA
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:7}"
+          
+          # Apply configs
+          kubectl apply -f k8s/namespaces.yaml
+          kubectl apply -f k8s/certificates.yaml
+          kubectl apply -f k8s/ingress.yaml
+          
+          # Deploy with new images
+          kubectl set image deployment/platform-api \
+            platform-api=${{ env.PLATFORM_API_IMAGE }}:${SHORT_SHA} \
+            -n myintell
+          
+          kubectl set image deployment/dashboard \
+            dashboard=${{ env.DASHBOARD_IMAGE }}:${SHORT_SHA} \
+            -n myintell
+          
+          # Wait for rollouts
+          kubectl rollout status deployment/platform-api -n myintell --timeout=120s
+          kubectl rollout status deployment/dashboard -n myintell --timeout=120s

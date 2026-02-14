@@ -12,8 +12,8 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  PLATFORM_API_IMAGE: ghcr.io/${{ github.repository }}/platform-api
-  DASHBOARD_IMAGE: ghcr.io/${{ github.repository }}/dashboard
+  PLATFORM_API_IMAGE: ghcr.io/daltonopenclaw/agent-forge/platform-api
+  DASHBOARD_IMAGE: ghcr.io/daltonopenclaw/agent-forge/dashboard
 
 jobs:
   build-platform-api:

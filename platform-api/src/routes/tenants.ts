@@ -9,7 +9,7 @@ export const tenantsRouter = new Hono();
 
 const createTenantSchema = z.object({
   name: z.string().min(1).max(100),
-  slug: z.string().min(1).max(50).regex(/^[a-z0-9-]+$/),
+  slug: z.string().min(1).max(50).regex(/^[a-z0-9_-]+$/), // Allow underscores for Clerk userIds
 });
 
 // List user's tenants

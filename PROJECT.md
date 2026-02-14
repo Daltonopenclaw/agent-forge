@@ -32,8 +32,8 @@ Think: "Heroku for AI agents"
 - [x] Terraform infrastructure (K3s, multi-tenant) — `/terraform/`
 
 ### ⏳ Next Up
-1. **Wire dashboard forms to API**
-2. **Test tenant/agent creation end-to-end**
+1. ~~Wire dashboard forms to API~~ ✅ Done
+2. **Test tenant/agent creation end-to-end** ← Current
 3. **Implement orchestrator provisioning controller**
 4. **Set up gVisor for sandboxed sub-agents**
 

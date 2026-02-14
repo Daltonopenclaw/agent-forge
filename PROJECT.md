@@ -2,48 +2,40 @@
 
 **Domain:** myintell.ai  
 **Tagline:** "Your superfriends"  
-**What:** Multi-tenant AI agent platform — users get their own AI agents that scale to zero when idle.
+**What:** Multi-tenant AI agent platform — users get their own persistent AI agents powered by OpenClaw.
 
 ---
 
 ## Vision
 
 A platform where anyone can spin up persistent AI agents ("superfriends") that:
-- Run 24/7 but cost nearly nothing when idle (scale-to-zero)
+- Run 24/7 with an always-on orchestrator per tenant
 - Have memory, personality, integrations
+- Can spawn sub-agents and provision infrastructure on demand
 - Are accessible via API, chat, or custom interfaces
 
 Think: "Heroku for AI agents"
 
 ---
 
-## Current State (2026-02-12)
+## Current State (2026-02-14)
 
 ### ✅ Done
-- [x] Terraform infrastructure (K3s, multi-tenant, KEDA, Neon) — `/terraform/`
+- [x] GitHub repo: https://github.com/Daltonopenclaw/agent-forge
 - [x] Domain acquired: myintell.ai
-- [x] Cloudflare DNS configured (pointing to Helsinki server for now)
-- [x] Landing page live: "Your superfriends coming soon"
-
-### 🔨 In Progress
-- [ ] End-to-end testing
-- [ ] Connect dashboard forms to API
-
-### ✅ Done
-1. ~~GitHub repo~~ ✅ https://github.com/Daltonopenclaw/agent-forge
-2. ~~Platform API~~ ✅ `/platform-api/`
-3. ~~Platform DB~~ ✅ Neon (aws-us-east-1)
-4. ~~Dashboard UI~~ ✅ `/dashboard/`
-5. ~~Deploy Dashboard~~ ✅ https://myintell.ai (Vercel)
-6. ~~Deploy Platform API~~ ✅ https://api.myintell.ai (Helsinki server)
-   - Running as systemd service
-   - SSL via Let's Encrypt
-   - Proxied through nginx
+- [x] Cloudflare DNS configured
+- [x] Landing page live: https://myintell.ai
+- [x] Platform API deployed: https://api.myintell.ai (Helsinki server)
+- [x] Dashboard UI deployed: https://myintell.ai (Vercel)
+- [x] Platform DB: Neon (aws-us-east-1)
+- [x] Auth: Clerk integration
+- [x] Terraform infrastructure (K3s, multi-tenant) — `/terraform/`
 
 ### ⏳ Next Up
-1. **Wire dashboard forms to API** ← NEXT
+1. **Wire dashboard forms to API**
 2. **Test tenant/agent creation end-to-end**
-3. **Move to K3s cluster when ready to scale**
+3. **Implement orchestrator provisioning controller**
+4. **Set up gVisor for sandboxed sub-agents**
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace
@@ -53,50 +45,339 @@ Think: "Heroku for AI agents"
 
 ---
 
-## Architecture
+## Architecture (Revised 2026-02-14)
+
+### Design Philosophy
+
+**"Always-On Orchestrator"** — Each tenant gets a dedicated OpenClaw Gateway that:
+- Is always running (instant response, no cold starts)
+- Owns all tenant state (sessions, memory, workspace)
+- Can spawn ephemeral sub-agents as K8s Jobs
+- Can provision infrastructure (databases, apps) in its namespace
+
+**"Hard Multi-Tenancy"** — Tenants don't trust each other, agents run untrusted code:
+- Namespace isolation with NetworkPolicies
+- gVisor sandboxing for sub-agent pods
+- Minimal RBAC (orchestrator can only create Jobs in its namespace)
+- Platform gateway as security perimeter
+
+### Full Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     myintell.ai                             │
-├─────────────────────────────────────────────────────────────┤
-│  Dashboard (Next.js)          │  API (Go/Node)              │
-│  - Signup/login               │  - POST /tenants            │
-│  - Agent management           │  - POST /agents             │
-│  - Usage & billing            │  - Webhooks                 │
-├─────────────────────────────────────────────────────────────┤
-│                    K3s Cluster (Hetzner)                    │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │ Tenant A    │  │ Tenant B    │  │ Tenant C    │  ...    │
-│  │ (namespace) │  │ (namespace) │  │ (namespace) │         │
-│  │  Agent pods │  │  Agent pods │  │  Agent pods │         │
-│  │  (KEDA →0)  │  │  (KEDA →0)  │  │  (KEDA →0)  │         │
-│  └─────────────┘  └─────────────┘  └─────────────┘         │
-├─────────────────────────────────────────────────────────────┤
-│  Neon (serverless Postgres per tenant, auto-pause)          │
-│  Traefik (ingress, routing)                                 │
-│  Prometheus + KEDA (scale-to-zero)                          │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                     PLATFORM LAYER (shared)                         │
+│                                                                     │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │ Platform Gateway │  │ Neon (platform)  │  │ Provisioning     │  │
+│  │ ─────────────────│  │ ────────────────│  │ Controller       │  │
+│  │ • Auth (Clerk)   │  │ • tenants table  │  │ ────────────────│  │
+│  │ • TLS termination│  │ • billing/usage  │  │ • Creates NS     │  │
+│  │ • Rate limiting  │  │ • audit logs     │  │ • Applies quotas │  │
+│  │ • Tenant routing │  │ • agent metadata │  │ • Provisions PVs │  │
+│  │ • WebSocket proxy│  │                  │  │ • Manages RBAC   │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+│                                                                     │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  │
+│  │ Traefik Ingress  │  │ Cloudflare       │  │ Container        │  │
+│  │ (built into K3s) │  │ (CDN + DNS)      │  │ Registry         │  │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘  │
+│                                                                     │
+│                    K3s Cluster (Hetzner)                           │
+│                    ~$50-80/month base cost                          │
+└─────────────────────────────────────────────────────────────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    ▼            ▼            ▼
+┌───────────────────────┐ ┌───────────────────────┐ ┌─────────────────┐
+│  TENANT NAMESPACE:    │ │  TENANT NAMESPACE:    │ │  TENANT NS:     │
+│  tenant-acme          │ │  tenant-globex        │ │  tenant-xxx     │
+│                       │ │                       │ │                 │
+│ ┌───────────────────┐ │ │ ┌───────────────────┐ │ │      ...        │
+│ │ 🧠 ORCHESTRATOR   │ │ │ │ 🧠 ORCHESTRATOR   │ │ │                 │
+│ │ (always-on)       │ │ │ │ (always-on)       │ │ │                 │
+│ │                   │ │ │ │                   │ │ │                 │
+│ │ OpenClaw Gateway  │ │ │ │ OpenClaw Gateway  │ │ │                 │
+│ │ ~256MB RAM        │ │ │ │ ~256MB RAM        │ │ │                 │
+│ └───────────────────┘ │ │ └───────────────────┘ │ │                 │
+│          │            │ │          │            │ │                 │
+│          ▼            │ │          ▼            │ │                 │
+│ ┌─────────────────┐   │ │ ┌─────────────────┐   │ │                 │
+│ │ PersistentVolume│   │ │ │ PersistentVolume│   │ │                 │
+│ │ (RWO, local)    │   │ │ │ (RWO, local)    │   │ │                 │
+│ │ ├── sessions/   │   │ │ │ ├── sessions/   │   │ │                 │
+│ │ ├── memory.db   │   │ │ │ ├── memory.db   │   │ │                 │
+│ │ └── workspace/  │   │ │ │ └── workspace/  │   │ │                 │
+│ └─────────────────┘   │ │ └─────────────────┘   │ │                 │
+│          │            │ │          │            │ │                 │
+│    spawns on-demand   │ │    spawns on-demand   │ │                 │
+│          ▼            │ │          ▼            │ │                 │
+│ ┌─────┐ ┌─────┐ ┌───┐ │ │ ┌─────┐ ┌─────┐      │ │                 │
+│ │Job: │ │Job: │ │Dep│ │ │ │Job: │ │Dep: │      │ │                 │
+│ │code │ │rsch │ │app│ │ │ │code │ │ web │      │ │                 │
+│ │agent│ │agnt │ │   │ │ │ │agnt │ │ app │      │ │                 │
+│ │gVisor│ │gVisor│    │ │ │ │gVisor│      │      │ │                 │
+│ └─────┘ └─────┘ └───┘ │ │ └─────┘ └─────┘      │ │                 │
+│                       │ │                       │ │                 │
+│ NetworkPolicy:        │ │ NetworkPolicy:        │ │                 │
+│ default-deny          │ │ default-deny          │ │                 │
+│                       │ │                       │ │                 │
+│ ResourceQuota:        │ │ ResourceQuota:        │ │                 │
+│ max 10 pods, 4Gi, 4CPU│ │ max 10 pods, 4Gi, 4CPU│ │                 │
+└───────────────────────┘ └───────────────────────┘ └─────────────────┘
 ```
 
 ---
 
-## Infra Details
+## Component Details
 
-- **Hosting:** Hetzner Cloud (Helsinki or Ashburn)
-- **Domain:** myintell.ai (Cloudflare DNS, Flexible SSL)
-- **Cluster:** K3s with Traefik, cert-manager, KEDA
-- **Database:** Neon (serverless Postgres, per-tenant)
-- **Secrets:** Sealed Secrets (GitOps-safe)
+### 1. Platform Gateway
+
+The security perimeter in front of all tenant orchestrators.
+
+**Responsibilities:**
+- Authenticate requests (Clerk JWT validation)
+- Route to correct tenant namespace based on subdomain/header
+- WebSocket proxying for chat connections
+- Rate limiting per tenant
+- TLS termination
+
+**Implementation:** Traefik with middleware, or custom Go/Node service
+
+### 2. Provisioning Controller
+
+Kubernetes controller that provisions tenant infrastructure.
+
+**On tenant signup:**
+```
+1. Create namespace: tenant-{slug}
+2. Create ResourceQuota (based on plan)
+3. Create NetworkPolicy (default-deny + allow orchestrator egress)
+4. Create ServiceAccount + RBAC (orchestrator-sa)
+5. Create PersistentVolumeClaim (orchestrator-pvc)
+6. Create Deployment (orchestrator)
+7. Create Service + IngressRoute
+8. Store tenant metadata in Neon
+```
+
+**RBAC for orchestrator ServiceAccount:**
+```yaml
+# Orchestrator can ONLY create/delete Jobs and view pods in its namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: orchestrator-role
+  namespace: tenant-acme
+rules:
+- apiGroups: ["batch"]
+  resources: ["jobs"]
+  verbs: ["create", "delete", "get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+```
+
+### 3. Orchestrator (Per-Tenant)
+
+Always-on OpenClaw Gateway that serves as the tenant's "main brain."
+
+**Container spec:**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: tenant-acme
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      serviceAccountName: orchestrator-sa
+      containers:
+      - name: openclaw
+        image: openclaw/openclaw:latest
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        ports:
+        - containerPort: 4444
+        env:
+        - name: TENANT_ID
+          value: "acme"
+        - name: OPENCLAW_STATE_DIR
+          value: "/state"
+        - name: OPENCLAW_WORKSPACE
+          value: "/state/workspace"
+        volumeMounts:
+        - name: state
+          mountPath: /state
+      volumes:
+      - name: state
+        persistentVolumeClaim:
+          claimName: orchestrator-pvc
+```
+
+**What the orchestrator stores locally (on PV):**
+- `/state/config.json5` — OpenClaw configuration
+- `/state/sessions/` — Session transcripts (JSONL)
+- `/state/memory.sqlite` — Memory index (sqlite-vec)
+- `/state/workspace/` — Agent workspace (code, files, artifacts)
+
+### 4. Sub-Agents (Ephemeral Jobs)
+
+Spawned by the orchestrator for specific tasks.
+
+**Example: Claude Code agent job**
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: code-agent-abc123
+  namespace: tenant-acme
+spec:
+  ttlSecondsAfterFinished: 300  # Cleanup after 5 min
+  template:
+    spec:
+      runtimeClassName: gvisor  # Sandboxed execution
+      containers:
+      - name: claude-code
+        image: myintell/claude-code-agent:latest
+        env:
+        - name: TASK
+          value: "Build a REST API for todo management"
+        - name: CALLBACK_URL
+          value: "http://orchestrator:4444/callback"
+        resources:
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+      restartPolicy: Never
+  backoffLimit: 1
+```
+
+**Output collection patterns:**
+1. **Callback to orchestrator** — Sub-agent POSTs results to orchestrator's callback endpoint
+2. **Logs streaming** — Orchestrator watches pod logs via K8s API
+3. **Shared volume** — For large artifacts, mount a shared PVC section
+
+### 5. Security: gVisor Sandboxing
+
+For running untrusted agent code safely.
+
+**Why gVisor:**
+- Intercepts syscalls, provides defense-in-depth
+- Prevents container escapes
+- Required for hard multi-tenancy with untrusted code
+
+**Setup:**
+```yaml
+# RuntimeClass for gVisor
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: gvisor
+handler: runsc
+```
+
+**All sub-agent Jobs use `runtimeClassName: gvisor`**
+
+### 6. NetworkPolicies
+
+Default-deny between tenant namespaces.
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tenant-acme
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-orchestrator-egress
+  namespace: tenant-acme
+spec:
+  podSelector:
+    matchLabels:
+      app: orchestrator
+  policyTypes:
+  - Egress
+  egress:
+  - {}  # Orchestrator can reach internet (for LLM APIs, etc.)
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-gateway
+  namespace: tenant-acme
+spec:
+  podSelector:
+    matchLabels:
+      app: orchestrator
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: platform
+```
 
 ---
 
-## Cost Estimates
+## Storage Strategy
 
-| Component | Monthly |
-|-----------|---------|
-| Platform base (K3s cluster) | ~$30-50 |
-| Per tenant (idle) | ~$0-5 |
-| Per tenant (active) | ~$5-25 |
+### Why NOT Neon for Agent Memory
+
+OpenClaw's memory system is SQLite-based (sqlite-vec for vectors, FTS5 for text search). Moving to Postgres would require:
+- Building a custom memory backend
+- Diverging from upstream OpenClaw
+- Added complexity for marginal benefit
+
+**SQLite is fine** when:
+- Single writer per tenant (our model)
+- Local persistent volume (NOT network filesystem)
+- No multi-replica orchestrators
+
+### Storage Breakdown
+
+| Data | Location | Why |
+|------|----------|-----|
+| Platform data (tenants, billing, audit) | Neon (shared) | Relational, serverless, cheap |
+| Session transcripts | Local PV | OpenClaw-native, JSONL format |
+| Memory index | Local PV (SQLite) | OpenClaw-native, fast vector search |
+| Workspace files | Local PV | Code, configs, generated files |
+| Large artifacts | R2/S3 | Cheap object storage, shareable |
+
+---
+
+## Cost Model (Revised)
+
+| Component | Monthly Cost |
+|-----------|--------------|
+| **Platform (shared)** | |
+| K3s cluster (3 nodes) | ~$50 |
+| Neon (platform DB) | ~$0-25 |
+| Cloudflare (DNS/CDN) | $0 |
+| **Per Tenant** | |
+| Orchestrator pod (always-on) | ~$3-5 |
+| PersistentVolume (10GB) | ~$1 |
+| Sub-agent Jobs (usage-based) | ~$0-10 |
+| **Total per idle tenant** | **~$4-6/mo** |
+| **Total per active tenant** | **~$10-25/mo** |
 
 ---
 
@@ -105,239 +386,66 @@ Think: "Heroku for AI agents"
 | Date | Decision | Rationale |
 |------|----------|-----------|
 | 2026-02-12 | Domain: myintell.ai | Short, memorable, .ai TLD fits |
-| 2026-02-12 | Cloudflare for DNS | Free tier, DDoS protection, easy API |
-| 2026-02-12 | Landing page on Helsinki server | Simple, no extra cost for "coming soon" |
-| 2026-02-12 | Platform API: Node/TS + Hono | Fast iteration for MVP, lightweight framework |
-| 2026-02-12 | Auth: Clerk | $0 to start, handles OAuth/magic links, fast integration |
-| 2026-02-12 | ORM: Drizzle | TypeScript-first, lightweight, good DX |
-| 2026-02-12 | Platform DB: Neon (aws-us-east-1) | Serverless, auto-pause, free tier, near Hetzner Ashburn |
-| 2026-02-12 | Postgres 17 | Latest stable |
+| 2026-02-12 | Platform API: Node/TS + Hono | Fast iteration for MVP |
+| 2026-02-12 | Auth: Clerk | $0 to start, handles OAuth/magic links |
+| 2026-02-12 | Platform DB: Neon | Serverless, auto-pause, free tier |
+| 2026-02-14 | **Always-on orchestrator model** | Simpler than KEDA scale-to-zero, instant response |
+| 2026-02-14 | **SQLite for agent memory (not Neon)** | OpenClaw-native, avoids network FS issues |
+| 2026-02-14 | **Local PV for agent state** | Single-writer safe, no SQLite corruption risk |
+| 2026-02-14 | **gVisor for sub-agents** | Hard multi-tenancy, untrusted code execution |
+| 2026-02-14 | **Jobs (not Deployments) for sub-agents** | Ephemeral, auto-cleanup with TTL |
+| 2026-02-14 | **Platform gateway as security perimeter** | Don't expose tenant orchestrators directly |
 
 ---
 
-## Open Questions
+## Open Questions (Resolved)
 
-- [ ] Platform API language: Go vs Node vs Python?
-- [ ] Auth: Roll our own vs Clerk vs Auth0?
-- [ ] What's the MVP feature set for first users?
-- [ ] Pricing model?
+| Question | Answer |
+|----------|--------|
+| ~~Scale-to-zero vs always-on?~~ | Always-on orchestrator (~$4/mo is worth instant response) |
+| ~~SQLite vs Postgres for memory?~~ | SQLite on local PV (OpenClaw-native, safe with single writer) |
+| ~~Jobs vs Deployments for sub-agents?~~ | Jobs with TTL cleanup (ephemeral by nature) |
+| ~~How to handle untrusted code?~~ | gVisor sandboxing + NetworkPolicies + tight RBAC |
+
+## Remaining Open Questions
+
+- [ ] Billing model: Per-seat? Per-agent? Usage-based?
+- [ ] How to handle orchestrator upgrades (rolling update with PV?)
+- [ ] Backup strategy for tenant PVs
+- [ ] Multi-region / HA story
+
+---
+
+## Directory Structure
+
+```
+agent_forge/
+├── PROJECT.md              # This file
+├── README.md               # Public readme
+├── dashboard/              # Next.js dashboard (Vercel)
+├── platform-api/           # Hono API (Node/TS)
+├── terraform/              # Infrastructure as code
+│   ├── k3s/               # K3s cluster setup
+│   ├── modules/           # Reusable modules
+│   └── tenant/            # Per-tenant resources
+├── manifests/              # K8s manifests (TODO)
+│   ├── platform/          # Platform-level resources
+│   ├── tenant-template/   # Template for new tenants
+│   └── runtime-classes/   # gVisor RuntimeClass
+└── controller/             # Provisioning controller (TODO)
+```
 
 ---
 
 ## Links
 
-- Terraform: `/root/.openclaw/workspace/agent_forge/terraform/`
-- Landing page: `/var/www/myintell.ai/`
-- Cloudflare creds: 1Password → "Cloudflare - myintell.ai"
+- **Repo:** https://github.com/Daltonopenclaw/agent-forge
+- **Dashboard:** https://myintell.ai
+- **API:** https://api.myintell.ai
+- **Terraform:** `/terraform/`
+- **Cloudflare creds:** 1Password → "Cloudflare - myintell.ai"
+- **Neon project:** 1Password → "Neon - myintell.ai"
 
 ---
 
----
-
-## Architecture Rationale
-
-_The thinking behind our design decisions._
-
-### 1. Two-Tier Infrastructure (Shared + Per-Tenant)
-
-Expensive resources are shared, cheap resources are isolated:
-
-```
-SHARED (one-time cost, amortized)       PER-TENANT (scales with customers)
-├── Load Balancer / Ingress             ├── Container/Pod
-├── Database Cluster                    ├── Database (within cluster)
-├── Container Orchestrator              ├── Storage bucket
-├── Secrets Management                  ├── CDN distribution
-└── Networking (VPC)                    └── Routing rules
-```
-
-**K8s Translation:**
-
-| Your ECS Design | K3s Equivalent |
-|-----------------|----------------|
-| ECS Cluster (Fargate) | K3s cluster on Hetzner/AWS |
-| ALB (shared) | Traefik Ingress (built into K3s) |
-| Target Groups | K8s Services |
-| Task Definitions | Deployments + Pod specs |
-| ECR | Harbor (self-hosted) or still ECR |
-| Aurora Serverless | CockroachDB Serverless, Neon, or Postgres + PgBouncer |
-
----
-
-### 2. Header-Based Multi-Tenant Routing
-
-One ingress serves all tenants using injected headers that can't be spoofed:
-
-```
-CloudFront adds: X-Tenant-Host: deepwork-tracker
-                        │
-                        ▼
-              ALB checks header + path
-                        │
-                        ▼
-              Routes to correct backend
-```
-
-**Traefik IngressRoute (per tenant):**
-
-```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: tenant-deepwork-tracker
-  namespace: tenants
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: "PathPrefix(`/api`) && Headers(`X-Tenant-Host`, `deepwork-tracker`)"
-      kind: Rule
-      services:
-        - name: deepwork-tracker-backend
-          port: 3000
-```
-
-**CDN:** Cloudflare in front of K3s ingress, injecting the tenant header.
-
----
-
-### 3. Database Strategy: Shared Cluster, Isolated DBs
-
-- **Platform DB:** SQLite on persistent volume (cheap, simple)
-- **Tenant DBs:** Database-per-tenant within shared cluster
-
-**Options:**
-
-| Option | Cost (idle) | Cost (active) | Complexity |
-|--------|-------------|---------------|------------|
-| Neon (serverless Postgres) | $0 (auto-suspend) | ~$10/mo | Low |
-| CockroachDB Serverless | $0 (free tier) | ~$30/mo | Low |
-| Self-hosted Postgres + PgBouncer | ~$5/mo | ~$15/mo | Medium |
-| Supabase self-hosted | ~$10/mo | ~$20/mo | Medium |
-
-**Decision:** Neon for tenant DBs — same auto-pause behavior as Aurora Serverless but cheaper.
-
----
-
-### 4. Scale-to-Zero for Tenant Workloads
-
-**KEDA (Kubernetes Event-Driven Autoscaling):**
-
-```yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: tenant-deepwork-tracker
-spec:
-  scaleTargetRef:
-    name: deepwork-tracker-backend
-  minReplicaCount: 0  # Scale to zero!
-  maxReplicaCount: 3
-  triggers:
-    - type: prometheus
-      metadata:
-        serverAddress: http://prometheus:9090
-        metricName: http_requests_total
-        threshold: '1'
-        query: sum(rate(http_requests_total{service="deepwork-tracker"}[2m]))
-```
-
-When no traffic → pods scale to 0 → only pay for storage.
-
-**Cold start mitigation:** Keep a "warm pool" of generic containers that can be assigned to any tenant on first request (~2-3 second cold start vs 30+ seconds).
-
----
-
-### 5. Agent Architecture Pattern
-
-Specialized agents with narrow toolsets work better than one agent with everything:
-
-```
-Main Orchestrator (OpenClaw + Claude)
-│
-├── coding-agent (Claude Code CLI)
-├── web-qa-agent (Playwright + Claude)
-├── mobile-qa-agent (Emulator + Maestro + Claude)
-├── deploy-agent (Terraform/Pulumi + Claude)
-├── infra-agent (K8s manifests + Claude)
-└── research-agent (web_search + Claude)
-```
-
----
-
-### 6. Cost Comparison: DIY K3s vs Vercel/Supabase
-
-**Per-Tenant Costs:**
-
-| | Vercel + Supabase | DIY K3s (Hetzner) | DIY K3s (AWS) |
-|---|---|---|---|
-| Idle tenant | $25/mo (Supabase Pro) | ~$1-5/mo | ~$5-10/mo |
-| Active tenant | $45-70/mo | ~$5-25/mo | ~$30-50/mo |
-| Platform overhead | $0 | ~$50/mo (shared) | ~$100/mo (shared) |
-
-**Break-Even Analysis:**
-
-```
-Vercel/Supabase: $25/tenant × N tenants
-DIY K3s (Hetzner): $50 + ($3/tenant × N tenants)
-
-Break-even: 50 + 3N = 25N → N ≈ 2-3 tenants
-```
-
-DIY wins almost immediately if you can handle the ops overhead.
-
----
-
-### 7. Full K3s Architecture Diagram
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SHARED PLATFORM (Hetzner)                        │
-│                       ~$50-80/month base cost                       │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
-│  │ K3s Master   │  │ K3s Workers  │  │ Postgres (Platform DB)  │   │
-│  │ (CX21 $5/mo) │  │ (2x CX31     │  │ SQLite or small PG      │   │
-│  │              │  │  $20/mo)     │  │ instance                │   │
-│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
-│  │ Traefik      │  │ Harbor       │  │ Vault / Sealed Secrets  │   │
-│  │ Ingress      │  │ Registry     │  │ (credentials)           │   │
-│  │ (built-in)   │  │              │  │                         │   │
-│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │           Cloudflare (CDN + DNS + Header Injection)          │  │
-│  │  - *.myintell.ai → K3s Ingress                               │  │
-│  │  - Adds X-Tenant-Host header per subdomain                   │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                PER-TENANT (in shared cluster)                       │
-│                ~$1-5/month idle, ~$5-25 active                      │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
-│  │ Deployment   │  │ Service      │  │ Neon DB (auto-pause)    │   │
-│  │ (KEDA scaled │  │ (ClusterIP)  │  │ or DB in shared PG      │   │
-│  │  to 0)       │  │              │  │                         │   │
-│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────┐  ┌──────────────┐  ┌─────────────────────────┐   │
-│  │ R2 Bucket    │  │ IngressRoute │  │ Sealed Secret           │   │
-│  │ (Cloudflare, │  │ (tenant      │  │ (tenant credentials)    │   │
-│  │  S3-compat)  │  │  routing)    │  │                         │   │
-│  └──────────────┘  └──────────────┘  └─────────────────────────┘   │
-│                                                                     │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │               Agent Workspace (PVC)                          │  │
-│  │  - /workspace (code, memory, config)                         │  │
-│  │  - Mounted into agent pods                                   │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-*Last updated: 2026-02-12 by Dalton*
+*Last updated: 2026-02-14 by Dalton*

@@ -12,7 +12,7 @@ const createAgentSchema = z.object({
   name: z.string().min(1).max(100),
   model: z.string().default('claude-sonnet-4-20250514'),
   systemPrompt: z.string().optional(),
-  config: z.record(z.any()).optional(),
+  config: z.record(z.string(), z.any()).optional(),
 });
 
 // List agents for a tenant

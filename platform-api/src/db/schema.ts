@@ -5,7 +5,7 @@ export const tenants = pgTable('tenants', {
   name: varchar('name', { length: 100 }).notNull(),
   slug: varchar('slug', { length: 50 }).unique().notNull(),
   ownerId: text('owner_id').notNull(), // Clerk user ID
-  databaseUrl: text('database_url').notNull(),
+  databaseUrl: text('database_url').default(''), // Reserved for future use
   status: varchar('status', { length: 20 }).notNull().default('active'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),

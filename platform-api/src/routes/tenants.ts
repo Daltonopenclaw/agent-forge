@@ -4,7 +4,6 @@ import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { tenants } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { provisionTenantDB } from '../services/neon.js';
 
 export const tenantsRouter = new Hono();
 
@@ -41,23 +40,16 @@ tenantsRouter.post('/', zValidator('json', createTenantSchema), async (c) => {
     return c.json({ error: 'Slug already taken' }, 409);
   }
   
-  // Provision Neon database for tenant
-  let databaseUrl: string;
-  try {
-    databaseUrl = await provisionTenantDB(slug);
-  } catch (error) {
-    console.error('Failed to provision tenant DB:', error);
-    return c.json({ error: 'Failed to provision database' }, 500);
-  }
-  
   // Create tenant record
+  // Note: For MVP, tenant state lives on K8s PVs (not per-tenant Neon DBs)
+  // databaseUrl field reserved for future use if needed
   const [tenant] = await db
     .insert(tenants)
     .values({
       name,
       slug,
       ownerId: auth.userId,
-      databaseUrl,
+      databaseUrl: '', // Not used in current architecture
       status: 'active',
     })
     .returning();

@@ -24,6 +24,8 @@ spec:
       labels:
         app: dashboard
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: dashboard
           image: ghcr.io/daltonopenclaw/agent-forge/dashboard:latest

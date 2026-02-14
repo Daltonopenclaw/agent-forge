@@ -27,6 +27,8 @@ spec:
       labels:
         app: platform-api
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: platform-api
           image: ghcr.io/daltonopenclaw/agent-forge/platform-api:latest

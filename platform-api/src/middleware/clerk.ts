@@ -1,9 +1,5 @@
 import { createMiddleware } from 'hono/factory';
-import { createClerkClient } from '@clerk/backend';
-
-const clerk = createClerkClient({
-  secretKey: process.env.CLERK_SECRET_KEY!,
-});
+import { verifyToken } from '@clerk/backend';
 
 export type ClerkAuth = {
   userId: string;
@@ -27,13 +23,19 @@ export const clerkMiddleware = createMiddleware(async (c, next) => {
   const token = authHeader.replace('Bearer ', '');
 
   try {
-    const { sub: userId, sid: sessionId, org_id: orgId } = await clerk.verifyToken(token);
+    const payload = await verifyToken(token, {
+      secretKey: process.env.CLERK_SECRET_KEY!,
+    });
     
-    if (!userId) {
+    if (!payload?.sub) {
       return c.json({ error: 'Invalid token' }, 401);
     }
 
-    c.set('auth', { userId, sessionId: sessionId || '', orgId });
+    c.set('auth', { 
+      userId: payload.sub, 
+      sessionId: payload.sid || '', 
+      orgId: payload.org_id 
+    });
     await next();
   } catch (error) {
     console.error('Auth error:', error);

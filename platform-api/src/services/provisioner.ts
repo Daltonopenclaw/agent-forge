@@ -168,10 +168,10 @@ export class AgentProvisioner {
       spec: {
         hard: {
           'pods': '10',
-          'requests.cpu': '2',
-          'requests.memory': '2Gi',
-          'limits.cpu': '4',
-          'limits.memory': '4Gi',
+          'requests.cpu': '4',
+          'requests.memory': '4Gi',
+          'limits.cpu': '8',
+          'limits.memory': '8Gi',
           'persistentvolumeclaims': '2',
           'requests.storage': '5Gi',
         },
@@ -390,12 +390,12 @@ _This is ${config.name}, powered by myintell.ai_
                 ],
                 resources: {
                   requests: {
-                    memory: '256Mi',
+                    memory: '512Mi',
                     cpu: '100m',
                   },
                   limits: {
-                    memory: '512Mi',
-                    cpu: '500m',
+                    memory: '1Gi',
+                    cpu: '1000m',
                   },
                 },
                 livenessProbe: {

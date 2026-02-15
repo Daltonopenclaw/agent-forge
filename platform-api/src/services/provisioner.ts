@@ -1,6 +1,7 @@
 import * as k8s from '@kubernetes/client-node';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { ingressManager } from './ingress.js';
 
 // Types for agent provisioning
 export interface AgentConfig {
@@ -97,11 +98,16 @@ export class AgentProvisioner {
       onProgress({ stage: 'health', progress: 85, message: 'Waiting for agent to be ready...' });
       await this.waitForReady(namespace);
 
+      // Stage 7: Create IngressRoute for external access
+      onProgress({ stage: 'health', progress: 95, message: 'Setting up external access...' });
+      const agentSlug = this.slugify(config.name) + '-' + config.agentId.substring(0, 8);
+      await ingressManager.createAgentIngress(namespace, agentSlug);
+
       onProgress({ stage: 'complete', progress: 100, message: 'Agent is ready!' });
 
       return {
         namespace,
-        gatewayUrl: `http://gateway.${namespace}.svc.cluster.local:4444`,
+        gatewayUrl: `https://agent-${agentSlug}.myintell.ai`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -119,6 +125,13 @@ export class AgentProvisioner {
   }
 
   async deprovision(namespace: string): Promise<void> {
+    try {
+      // Delete IngressRoute first
+      await ingressManager.deleteAgentIngress(namespace);
+    } catch (error) {
+      console.log(`Cleanup: IngressRoute for ${namespace} may not exist`);
+    }
+
     try {
       await this.coreApi.deleteNamespace({ name: namespace });
     } catch (error) {

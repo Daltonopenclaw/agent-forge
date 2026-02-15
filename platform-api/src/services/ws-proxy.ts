@@ -77,6 +77,8 @@ export function setupWebSocketProxy(server: any) {
         headers: {
           'x-myintell-user-id': userId,
           'x-myintell-agent-id': agentId,
+          'Origin': 'https://myintell.ai',
+          'User-Agent': 'MyIntell-Platform/1.0',
         },
       });
 
@@ -94,6 +96,24 @@ export function setupWebSocketProxy(server: any) {
       });
 
       agentWs.on('message', (data) => {
+        // Parse message to handle auth challenges
+        try {
+          const msg = JSON.parse(data.toString());
+          
+          // Handle connect challenge - respond with trusted proxy auth
+          if (msg.type === 'event' && msg.event === 'connect.challenge') {
+            console.log(`[ws-proxy] Received challenge, responding for user ${userId}`);
+            agentWs.send(JSON.stringify({
+              type: 'auth',
+              mode: 'trusted-proxy',
+              nonce: msg.payload?.nonce,
+            }));
+            return; // Don't forward challenge to client
+          }
+        } catch {
+          // Not JSON, forward as-is
+        }
+        
         // Forward agent messages to client
         if (clientWs.readyState === WebSocket.OPEN) {
           clientWs.send(data);

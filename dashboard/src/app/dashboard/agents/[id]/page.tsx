@@ -335,6 +335,36 @@ function ChannelsTab({ agent, onUpdate }: { agent: Agent; onUpdate: () => void }
 }
 
 function SettingsTab({ agent }: { agent: Agent }) {
+  const router = useRouter();
+  const { getToken } = useAuth();
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`Are you sure you want to delete "${agent.name}"? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      const token = await getToken();
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/agents/${agent.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        router.push('/dashboard/agents');
+      } else {
+        alert('Failed to delete agent');
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      alert('Failed to delete agent');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-gray-800/50 rounded-lg p-6">
@@ -342,8 +372,12 @@ function SettingsTab({ agent }: { agent: Agent }) {
         <p className="text-gray-400 text-sm mb-4">
           Deleting your agent will permanently remove all data and conversations.
         </p>
-        <button className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/50 rounded-lg transition-colors">
-          Delete Agent
+        <button 
+          onClick={handleDelete}
+          disabled={deleting}
+          className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/50 rounded-lg transition-colors disabled:opacity-50"
+        >
+          {deleting ? 'Deleting...' : 'Delete Agent'}
         </button>
       </div>
     </div>

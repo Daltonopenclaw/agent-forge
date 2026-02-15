@@ -252,6 +252,7 @@ export class AgentProvisioner {
   },
   
   gateway: {
+    httpHost: "0.0.0.0",
     auth: {
       mode: "trusted-proxy",
       trustedProxy: {

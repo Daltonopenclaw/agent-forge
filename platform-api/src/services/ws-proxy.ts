@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
-import { IncomingMessage, Server } from 'http';
+import { IncomingMessage } from 'http';
 import { verifyToken } from '@clerk/backend';
 import { db } from '../db/index.js';
 import { agents } from '../db/schema.js';
@@ -14,7 +14,8 @@ interface AgentConnection {
 
 const connections = new Map<WebSocket, AgentConnection>();
 
-export function setupWebSocketProxy(server: Server) {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function setupWebSocketProxy(server: any) {
   const wss = new WebSocketServer({ 
     server,
     path: '/ws/agent',

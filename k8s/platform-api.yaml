@@ -27,6 +27,7 @@ spec:
       labels:
         app: platform-api
     spec:
+      serviceAccountName: platform-api
       imagePullSecrets:
         - name: ghcr-secret
       containers:
@@ -38,6 +39,8 @@ spec:
           envFrom:
             - secretRef:
                 name: platform-api-secrets
+            - secretRef:
+                name: platform-llm-keys
           env:
             - name: NODE_ENV
               value: "production"

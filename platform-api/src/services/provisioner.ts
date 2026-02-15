@@ -252,7 +252,7 @@ export class AgentProvisioner {
   },
   
   gateway: {
-    bind: "0.0.0.0",
+    bind: "lan",
     auth: {
       mode: "trusted-proxy",
       trustedProxy: {

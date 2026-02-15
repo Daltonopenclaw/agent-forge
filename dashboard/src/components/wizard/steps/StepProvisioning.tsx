@@ -208,13 +208,19 @@ I pay attention to preferences and learn over time. I'm here to be genuinely hel
         // Poll for provisioning status
         let complete = false;
         let attempts = 0;
-        const maxAttempts = 60; // 2 minutes max
+        const maxAttempts = 90; // 3 minutes max
 
         while (!complete && attempts < maxAttempts) {
           await new Promise((r) => setTimeout(r, 2000));
           attempts++;
 
-          const status = await getAgentStatus(token, agent.id);
+          // Refresh token on each poll to avoid expiration
+          const freshToken = await getToken();
+          if (!freshToken) {
+            throw new Error('Session expired - please refresh and try again');
+          }
+          
+          const status = await getAgentStatus(freshToken, agent.id);
           
           if (status.agentStatus === 'running') {
             complete = true;

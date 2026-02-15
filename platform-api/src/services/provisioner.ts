@@ -391,12 +391,12 @@ _This is ${config.name}, powered by myintell.ai_
                 ],
                 resources: {
                   requests: {
-                    memory: '512Mi',
-                    cpu: '100m',
+                    memory: '1Gi',
+                    cpu: '200m',
                   },
                   limits: {
-                    memory: '1Gi',
-                    cpu: '1000m',
+                    memory: '2Gi',
+                    cpu: '2000m',
                   },
                 },
                 livenessProbe: {
@@ -404,16 +404,18 @@ _This is ${config.name}, powered by myintell.ai_
                     path: '/health',
                     port: 4444 as any,
                   },
-                  initialDelaySeconds: 30,
+                  initialDelaySeconds: 60,
                   periodSeconds: 30,
+                  timeoutSeconds: 10,
                 },
                 readinessProbe: {
                   httpGet: {
                     path: '/health',
                     port: 4444 as any,
                   },
-                  initialDelaySeconds: 10,
+                  initialDelaySeconds: 30,
                   periodSeconds: 10,
+                  timeoutSeconds: 10,
                 },
               },
             ],

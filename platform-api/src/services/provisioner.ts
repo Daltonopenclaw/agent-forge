@@ -144,6 +144,25 @@ export class AgentProvisioner {
     }
   }
 
+  /**
+   * Restart an agent by deleting its pods (deployment will recreate them)
+   */
+  async restartAgent(namespace: string): Promise<void> {
+    const pods = await this.coreApi.listNamespacedPod({
+      namespace,
+      labelSelector: 'app=gateway',
+    });
+    
+    for (const pod of pods.items) {
+      if (pod.metadata?.name) {
+        await this.coreApi.deleteNamespacedPod({
+          name: pod.metadata.name,
+          namespace,
+        });
+      }
+    }
+  }
+
   private async createNamespace(namespace: string, config: AgentConfig): Promise<void> {
     const ns: k8s.V1Namespace = {
       apiVersion: 'v1',

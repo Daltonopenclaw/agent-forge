@@ -180,6 +180,76 @@ agentsRouter.get('/:id/status', async (c) => {
   });
 });
 
+// Wake/retry agent (re-provision if failed or restart if running)
+agentsRouter.post('/:id/wake', async (c) => {
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+  
+  const [agent] = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.id, id))
+    .limit(1);
+  
+  if (!agent) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+  
+  // Verify ownership
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(and(eq(tenants.id, agent.tenantId), eq(tenants.ownerId, auth.userId)))
+    .limit(1);
+  
+  if (!tenant) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+
+  const config = (agent.config || {}) as Record<string, any>;
+  
+  // If error status, try to re-provision
+  if (agent.status === 'error' || agent.status === 'idle') {
+    // Update status to provisioning
+    await db
+      .update(agents)
+      .set({ status: 'provisioning' })
+      .where(eq(agents.id, id));
+
+    // Re-provision
+    const agentConfig: AgentConfig = {
+      agentId: agent.id,
+      tenantId: agent.tenantId,
+      name: agent.name,
+      avatar: config.avatar || '🤖',
+      personalityType: config.personalityType || 'personal-assistant',
+      soulContent: agent.systemPrompt || '',
+      agentsContent: '',
+      modelTier: config.modelTier || 'smart',
+    };
+
+    // Run async
+    provisionAgent(agent.id, agentConfig);
+    
+    return c.json({ 
+      message: 'Re-provisioning started',
+      status: 'provisioning',
+    });
+  }
+  
+  // If running, just restart the pod
+  if (agent.status === 'running' && config.namespace) {
+    try {
+      await provisioner.restartAgent(config.namespace);
+      return c.json({ message: 'Agent restarted', status: 'running' });
+    } catch (error) {
+      return c.json({ error: 'Failed to restart agent' }, 500);
+    }
+  }
+
+  return c.json({ message: 'Agent is already running or provisioning', status: agent.status });
+});
+
 // Get agent
 agentsRouter.get('/:id', async (c) => {
   const auth = c.get('auth');

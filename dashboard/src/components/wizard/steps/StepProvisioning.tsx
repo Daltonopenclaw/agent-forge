@@ -1,7 +1,129 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useWizard } from "../WizardContext";
+import { useAuth } from "@clerk/nextjs";
+import { useTenant } from "@/lib/tenant-context";
+import { createAgent, getAgentStatus, CreateAgentData } from "@/lib/api";
+
+// Import personality templates
+const SOUL_TEMPLATES: Record<string, string> = {
+  'personal-assistant': `# SOUL.md - Personal Assistant
+
+You are {{NAME}}, a capable, proactive personal assistant who genuinely cares about being helpful.
+
+## Personality
+- Proactive: You anticipate needs before being asked
+- Reliable: You follow through on commitments
+- Warm but efficient: Friendly without being chatty
+- Adaptable: You adjust your style to the situation
+
+## Communication
+- Be concise by default, detailed when needed
+- Confirm understanding before taking significant actions
+- Summarize key points when conversations get long
+
+## Boundaries
+- Always ask before sending external communications
+- Don't make financial transactions without explicit approval
+- Be transparent about uncertainty
+
+Be the assistant you'd want to have — helpful, trustworthy, and a pleasure to work with.`,
+
+  'research-partner': `# SOUL.md - Research Partner
+
+You are {{NAME}}, a thorough, analytical thinker who loves diving deep into complex topics.
+
+## Personality
+- Thorough: You dig deep rather than skimming the surface
+- Analytical: You break down complex topics clearly
+- Curious: You ask follow-up questions
+- Balanced: You present multiple perspectives
+
+## Communication
+- Lead with key findings, then provide detail
+- Use structure: headers, bullet points when helpful
+- Cite sources and distinguish facts from interpretations
+
+## Research Approach
+1. Understand the question first
+2. Gather information from multiple angles
+3. Synthesize and find patterns
+4. Present clearly and acknowledge gaps
+
+Be the research partner who makes complex topics accessible.`,
+
+  'creative-collaborator': `# SOUL.md - Creative Collaborator
+
+You are {{NAME}}, an imaginative partner who helps bring ideas to life.
+
+## Personality
+- Imaginative: You generate unexpected ideas
+- Encouraging: You build on ideas rather than shooting them down
+- Playful: You're not afraid to be bold or experimental
+- Collaborative: You riff on ideas together
+
+## Communication
+- Embrace "yes, and..." thinking
+- Offer multiple options and variations
+- Balance wild ideas with practical suggestions
+- Match creative energy
+
+## Creative Process
+1. Explore freely first
+2. Find the gems
+3. Develop and refine
+4. Iterate based on feedback
+
+Be the creative partner who makes brainstorming sessions productive.`,
+
+  'technical-expert': `# SOUL.md - Technical Expert
+
+You are {{NAME}}, a precise, knowledgeable technical partner.
+
+## Personality
+- Precise: You value accuracy and correctness
+- Pragmatic: You balance ideal solutions with constraints
+- Patient: You explain complex concepts clearly
+- Thorough: You consider edge cases and security
+
+## Communication
+- Use code examples to illustrate points
+- Be specific: versions, configurations, exact commands
+- Explain the "why" alongside the "how"
+
+## Code Philosophy
+- Readable code > clever code
+- Handle errors explicitly
+- Document non-obvious decisions
+- Security is non-negotiable
+
+Be the technical partner who makes complex problems tractable.`,
+};
+
+const AGENTS_TEMPLATE = `# AGENTS.md
+
+## First Run
+Read SOUL.md to understand who you are.
+Read USER.md if it exists for context about your human.
+
+## Every Session
+Check memory/YYYY-MM-DD.md (today + yesterday) for recent context.
+
+## Memory
+Capture what matters. Decisions, context, things to remember.
+Write to MEMORY.md for long-term important items.
+Write to memory/YYYY-MM-DD.md for daily logs.
+
+## Safety
+- Don't exfiltrate private data
+- Don't run destructive commands without asking
+- When in doubt, ask
+
+## External vs Internal
+Safe to do freely: Read files, explore, search the web
+Ask first: Sending emails, public posts, anything that leaves the machine
+`;
 
 const STAGES = [
   { id: "namespace", label: "Setting up secure environment" },
@@ -18,48 +140,114 @@ const TIPS = [
 ];
 
 export function StepProvisioning() {
-  const { data, nextStep } = useWizard();
+  const { data, nextStep, updateData } = useWizard();
+  const { getToken } = useAuth();
+  const { tenant } = useTenant();
   const [currentStage, setCurrentStage] = useState(0);
   const [tipIndex, setTipIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
+  const provisioningStarted = useRef(false);
 
   useEffect(() => {
     // Rotate tips
     const tipInterval = setInterval(() => {
       setTipIndex((i) => (i + 1) % TIPS.length);
     }, 4000);
-
     return () => clearInterval(tipInterval);
   }, []);
 
   useEffect(() => {
-    // Simulate provisioning stages
-    // In real implementation, this would poll the backend
+    if (provisioningStarted.current) return;
+    provisioningStarted.current = true;
+
     const provisionAgent = async () => {
       try {
-        for (let i = 0; i < STAGES.length; i++) {
-          setCurrentStage(i);
-          // Simulate each stage taking 1-2 seconds
-          await new Promise((resolve) => setTimeout(resolve, 1500 + Math.random() * 1000));
+        const token = await getToken();
+        if (!token || !tenant) {
+          throw new Error("Not authenticated");
         }
-        
-        // TODO: Replace with actual API call
-        // const response = await fetch('/api/agents/provision', {
-        //   method: 'POST',
-        //   body: JSON.stringify(data),
-        // });
-        
-        // Move to chat
-        setTimeout(() => nextStep(), 500);
+
+        // Generate SOUL.md content
+        let soulContent: string;
+        if (data.personalityType === 'custom' && data.customPersonality) {
+          soulContent = `# SOUL.md - ${data.name}
+
+${data.customPersonality.communicationStyle}
+
+## What I Help With
+${data.customPersonality.focusAreas}
+
+## Boundaries
+${data.customPersonality.boundaries || 'Ask before taking actions that cannot be undone.'}
+
+## How I Work
+I pay attention to preferences and learn over time. I'm here to be genuinely helpful.`;
+        } else {
+          soulContent = (SOUL_TEMPLATES[data.personalityType] || SOUL_TEMPLATES['personal-assistant'])
+            .replace(/\{\{NAME\}\}/g, data.name);
+        }
+
+        // Create agent via API
+        setCurrentStage(0);
+        const agentData: CreateAgentData = {
+          tenantId: tenant.id,
+          name: data.name,
+          avatar: data.avatar,
+          personalityType: data.personalityType,
+          soulContent,
+          agentsContent: AGENTS_TEMPLATE,
+          modelTier: data.modelTier,
+          byokProvider: data.byok?.provider,
+          byokApiKey: data.byok?.apiKey,
+        };
+
+        const { agent } = await createAgent(token, agentData);
+        setAgentId(agent.id);
+
+        // Poll for provisioning status
+        let complete = false;
+        let attempts = 0;
+        const maxAttempts = 60; // 2 minutes max
+
+        while (!complete && attempts < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 2000));
+          attempts++;
+
+          const status = await getAgentStatus(token, agent.id);
+          
+          if (status.agentStatus === 'running') {
+            complete = true;
+            setCurrentStage(STAGES.length);
+          } else if (status.agentStatus === 'error') {
+            throw new Error(status.provisioning?.error || 'Provisioning failed');
+          } else if (status.provisioning) {
+            // Map provisioning stage to UI stage
+            const stageIndex = STAGES.findIndex(s => s.id === status.provisioning?.stage);
+            if (stageIndex >= 0) {
+              setCurrentStage(stageIndex);
+            }
+          }
+        }
+
+        if (!complete) {
+          throw new Error('Provisioning timed out');
+        }
+
+        // Store agent ID and move to chat
+        (updateData as any)({ agentId: agent.id });
+        setTimeout(() => nextStep(), 1000);
+
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create agent");
+        console.error('Provisioning error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to create agent');
       }
     };
 
     provisionAgent();
-  }, [data, nextStep]);
+  }, [data, getToken, tenant, nextStep, updateData]);
 
-  const progress = ((currentStage + 1) / STAGES.length) * 100;
+  const progress = ((currentStage + 1) / (STAGES.length + 1)) * 100;
 
   return (
     <div className="min-h-[60vh] flex flex-col items-center justify-center text-center">
@@ -67,7 +255,7 @@ export function StepProvisioning() {
         <div className="space-y-4">
           <div className="text-6xl">😕</div>
           <h2 className="text-2xl font-bold text-white">Something went wrong</h2>
-          <p className="text-slate-400">{error}</p>
+          <p className="text-slate-400 max-w-md">{error}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
@@ -84,7 +272,7 @@ export function StepProvisioning() {
             <h2 className="text-2xl font-bold text-white">
               Creating {data.name}...
             </h2>
-            <p className="text-slate-400 mt-2">This usually takes about 30 seconds</p>
+            <p className="text-slate-400 mt-2">This usually takes about 30-60 seconds</p>
           </div>
 
           {/* Progress stages */}

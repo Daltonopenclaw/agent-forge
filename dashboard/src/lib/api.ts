@@ -71,16 +71,40 @@ export async function getAgent(token: string, agentId: string) {
   });
 }
 
-export async function createAgent(token: string, data: {
+export interface CreateAgentData {
   tenantId: string;
   name: string;
-  model?: string;
-  systemPrompt?: string;
-}) {
+  avatar: string;
+  personalityType: 'personal-assistant' | 'research-partner' | 'creative-collaborator' | 'technical-expert' | 'custom';
+  soulContent: string;
+  agentsContent: string;
+  modelTier: 'smart' | 'powerful' | 'fast';
+  byokProvider?: 'anthropic' | 'openai';
+  byokApiKey?: string;
+}
+
+export async function createAgent(token: string, data: CreateAgentData) {
   return apiClient('/api/agents', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: JSON.stringify(data),
+  });
+}
+
+export interface ProvisioningStatus {
+  agentId: string;
+  agentStatus: string;
+  provisioning: {
+    stage: string;
+    progress: number;
+    message: string;
+    error?: string;
+  } | null;
+}
+
+export async function getAgentStatus(token: string, agentId: string): Promise<ProvisioningStatus> {
+  return apiClient(`/api/agents/${agentId}/status`, {
+    headers: { Authorization: `Bearer ${token}` },
   });
 }
 

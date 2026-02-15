@@ -400,22 +400,20 @@ _This is ${config.name}, powered by myintell.ai_
                   },
                 },
                 livenessProbe: {
-                  httpGet: {
-                    path: '/health',
+                  tcpSocket: {
                     port: 18789 as any,
                   },
                   initialDelaySeconds: 60,
                   periodSeconds: 30,
-                  timeoutSeconds: 10,
+                  timeoutSeconds: 5,
                 },
                 readinessProbe: {
-                  httpGet: {
-                    path: '/health',
+                  tcpSocket: {
                     port: 18789 as any,
                   },
                   initialDelaySeconds: 30,
                   periodSeconds: 10,
-                  timeoutSeconds: 10,
+                  timeoutSeconds: 5,
                 },
               },
             ],

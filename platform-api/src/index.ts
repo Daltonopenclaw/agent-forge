@@ -7,6 +7,7 @@ import { tenantsRouter } from './routes/tenants.js';
 import { agentsRouter } from './routes/agents.js';
 import { usageRouter } from './routes/usage.js';
 import { healthRouter } from './routes/health.js';
+import { setupWebSocketProxy } from './services/ws-proxy.js';
 
 const app = new Hono();
 
@@ -78,6 +79,9 @@ app.onError((err, c) => {
 const port = parseInt(process.env.PORT || '3001');
 console.log(`🚀 Platform API running on http://localhost:${port}`);
 
-serve({ fetch: app.fetch, port });
+const server = serve({ fetch: app.fetch, port });
+
+// Attach WebSocket proxy to the same server
+setupWebSocketProxy(server);
 
 export default app;

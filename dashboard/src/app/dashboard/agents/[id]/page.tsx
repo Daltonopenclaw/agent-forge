@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { AgentChat } from '@/components/AgentChat';
 
 interface Agent {
   id: string;
@@ -18,7 +19,7 @@ interface Agent {
   createdAt: string;
 }
 
-type Tab = 'overview' | 'channels' | 'settings';
+type Tab = 'chat' | 'overview' | 'channels' | 'settings';
 
 export default function AgentDetailPage() {
   const params = useParams();
@@ -26,7 +27,7 @@ export default function AgentDetailPage() {
   const { getToken } = useAuth();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>('chat');
 
   useEffect(() => {
     loadAgent();
@@ -95,7 +96,7 @@ export default function AgentDetailPage() {
       {/* Tabs */}
       <div className="border-b border-gray-700 mb-6">
         <nav className="flex gap-6">
-          {(['overview', 'channels', 'settings'] as Tab[]).map((tab) => (
+          {(['chat', 'overview', 'channels', 'settings'] as Tab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -112,6 +113,18 @@ export default function AgentDetailPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'chat' && agent.status === 'running' && (
+        <AgentChat agentId={agent.id} agentName={agent.name} agentAvatar={agent.avatar} />
+      )}
+      {activeTab === 'chat' && agent.status !== 'running' && (
+        <div className="bg-gray-800/50 rounded-lg p-8 text-center">
+          <p className="text-gray-400 mb-4">
+            {agent.status === 'provisioning' 
+              ? 'Agent is still provisioning...' 
+              : 'Agent is not running. Click Wake to start it.'}
+          </p>
+        </div>
+      )}
       {activeTab === 'overview' && <OverviewTab agent={agent} />}
       {activeTab === 'channels' && <ChannelsTab agent={agent} onUpdate={loadAgent} />}
       {activeTab === 'settings' && <SettingsTab agent={agent} />}

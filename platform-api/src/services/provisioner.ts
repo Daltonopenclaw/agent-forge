@@ -379,6 +379,8 @@ _This is ${config.name}, powered by myintell.ai_
               {
                 name: 'openclaw',
                 image: 'ghcr.io/openclaw/openclaw:latest',
+                command: ['node'],
+                args: ['dist/index.js', 'gateway', '--bind', 'lan'],
                 ports: [
                   { containerPort: 18789, name: 'gateway' },
                 ],

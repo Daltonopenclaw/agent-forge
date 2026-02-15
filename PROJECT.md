@@ -18,29 +18,35 @@ Think: "Heroku for AI agents"
 
 ---
 
-## Current State (2026-02-14)
+## Current State (2026-02-15)
 
 ### ✅ Done
 - [x] GitHub repo: https://github.com/Daltonopenclaw/agent-forge
 - [x] Domain acquired: myintell.ai
-- [x] Cloudflare DNS configured
-- [x] Landing page live: https://myintell.ai
-- [x] Platform API deployed: https://api.myintell.ai (Helsinki server)
-- [x] Dashboard UI deployed: https://myintell.ai (Vercel)
+- [x] Cloudflare DNS configured (Full Strict SSL)
+- [x] Landing page + Dashboard deployed: https://myintell.ai (K8s)
+- [x] Platform API deployed: https://api.myintell.ai (K8s)
 - [x] Platform DB: Neon (aws-us-east-1)
 - [x] Auth: Clerk integration
-- [x] Terraform infrastructure (K3s, multi-tenant) — `/terraform/`
+- [x] K3s cluster deployed (Hetzner Ashburn)
+- [x] Traefik ingress with wildcard TLS (*.myintell.ai)
+- [x] CI/CD: GitHub Actions → ghcr.io → K8s auto-deploy
+- [x] **Agent provisioning pipeline** — Full wizard flow working!
+- [x] **Agent runtime** — OpenClaw pods with `--bind lan`, exec probes
+- [x] **NetworkPolicy** — Fixed for hostNetwork Traefik pods
+- [x] **Telegram BYOK integration** — Connect bot, update agent config
 
 ### ⏳ Next Up
-1. ~~Wire dashboard forms to API~~ ✅ Done
-2. **Test tenant/agent creation end-to-end** ← Current
-3. **Implement orchestrator provisioning controller**
-4. **Set up gVisor for sandboxed sub-agents**
+1. **Platform gateway with trusted-proxy auth** ← Needed for dashboard chat
+2. **Frontend JWT refresh** during 3-min provisioning
+3. **SMS channel** (Twilio)
+4. **Voice (TTS/STT)** — Talk to your agent
 
 ### 🔮 Future
 - [ ] Agent templates / marketplace
-- [ ] Custom integrations (Slack, Discord, email, etc.)
+- [ ] Custom integrations (Discord, WhatsApp, email)
 - [ ] Billing integration (Stripe)
+- [ ] Usage metering + cost tracking
 - [ ] Public launch
 
 ---

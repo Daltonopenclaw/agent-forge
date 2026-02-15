@@ -557,6 +557,12 @@ _This is ${config.name}, powered by myintell.ai_
                   },
                 },
               },
+              // Allow from node network (hostNetwork Traefik pods)
+              {
+                ipBlock: {
+                  cidr: '10.0.0.0/8',
+                },
+              },
             ],
           },
         ],

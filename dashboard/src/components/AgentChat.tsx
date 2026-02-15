@@ -23,9 +23,11 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const currentStreamRef = useRef<string>('');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -55,10 +57,8 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected');
-        setConnected(true);
-        setConnecting(false);
-        setError(null);
+        console.log('WebSocket open, waiting for proxy connection...');
+        // Don't set connected yet - wait for the 'connected' message from proxy
       };
 
       ws.onmessage = async (event) => {
@@ -70,37 +70,89 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
           }
           
           const data = JSON.parse(rawData);
+          console.log('Received:', data.type, data);
           
-          // Handle OpenClaw message format
-          if (data.type === 'message' || data.type === 'chunk') {
-            const content = data.payload?.content || data.payload?.text || data.content || '';
+          // Handle connection confirmation from proxy
+          if (data.type === 'connected') {
+            console.log('Connected to agent via proxy');
+            setConnected(true);
+            setConnecting(false);
+            setError(null);
+            return;
+          }
+          
+          // Handle streaming chunks
+          if (data.type === 'chunk') {
+            const content = data.payload?.delta?.text || data.payload?.text || '';
             if (content) {
+              setStreaming(true);
+              currentStreamRef.current += content;
+              
               setMessages(prev => {
-                // Check if we're continuing a stream
                 const lastMsg = prev[prev.length - 1];
-                if (lastMsg?.role === 'assistant' && data.type === 'chunk') {
-                  // Append to existing message
+                if (lastMsg?.role === 'assistant' && streaming) {
+                  // Update existing streaming message
                   return [
                     ...prev.slice(0, -1),
-                    { ...lastMsg, content: lastMsg.content + content }
+                    { ...lastMsg, content: currentStreamRef.current }
                   ];
                 }
-                // New message
+                // Start new streaming message
                 return [...prev, {
-                  id: data.id || Date.now().toString(),
+                  id: Date.now().toString(),
+                  role: 'assistant' as const,
+                  content: currentStreamRef.current,
+                  timestamp: new Date(),
+                }];
+              });
+            }
+            return;
+          }
+          
+          // Handle complete message
+          if (data.type === 'message') {
+            const content = data.payload?.content || data.payload?.text || '';
+            if (content) {
+              setStreaming(false);
+              currentStreamRef.current = '';
+              
+              setMessages(prev => {
+                // If we were streaming, the last message should be updated
+                const lastMsg = prev[prev.length - 1];
+                if (lastMsg?.role === 'assistant') {
+                  return [
+                    ...prev.slice(0, -1),
+                    { ...lastMsg, content }
+                  ];
+                }
+                // Otherwise add new message
+                return [...prev, {
+                  id: data.payload?.id || Date.now().toString(),
                   role: 'assistant' as const,
                   content,
                   timestamp: new Date(),
                 }];
               });
             }
-          } else if (data.type === 'event' && data.event === 'connect.challenge') {
-            // Respond to challenge
-            ws.send(JSON.stringify({
-              type: 'auth',
-              nonce: data.payload.nonce,
-            }));
+            return;
           }
+          
+          // Handle done event
+          if (data.type === 'done') {
+            setStreaming(false);
+            currentStreamRef.current = '';
+            return;
+          }
+          
+          // Handle errors
+          if (data.type === 'error') {
+            console.error('Agent error:', data);
+            setError(data.error || data.payload?.message || 'Agent error');
+            setStreaming(false);
+            currentStreamRef.current = '';
+            return;
+          }
+          
         } catch (err) {
           console.error('Failed to parse message:', err);
         }
@@ -116,6 +168,8 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
         console.log('WebSocket closed:', event.code, event.reason);
         setConnected(false);
         setConnecting(false);
+        setStreaming(false);
+        currentStreamRef.current = '';
         wsRef.current = null;
 
         // Auto-reconnect after 3 seconds if not intentional close
@@ -132,7 +186,7 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
       setError('Failed to connect');
       setConnecting(false);
     }
-  }, [agentId, getToken]);
+  }, [agentId, getToken, streaming]);
 
   useEffect(() => {
     connect();
@@ -149,7 +203,7 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !connected) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -160,7 +214,7 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
 
     setMessages(prev => [...prev, userMessage]);
     
-    // Send to OpenClaw
+    // Send simplified message format - proxy will convert to OpenClaw format
     wsRef.current.send(JSON.stringify({
       type: 'message',
       content: input.trim(),
@@ -176,7 +230,7 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
         <div className="text-2xl">{agentAvatar}</div>
         <div className="flex-1">
           <h3 className="text-white font-medium">{agentName}</h3>
-          <p className={`text-xs ${connected ? 'text-green-400' : 'text-gray-400'}`}>
+          <p className={`text-xs ${connected ? 'text-green-400' : connecting ? 'text-yellow-400' : 'text-gray-400'}`}>
             {connecting ? 'Connecting...' : connected ? 'Connected' : 'Disconnected'}
           </p>
         </div>
@@ -224,6 +278,15 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
             </div>
           </div>
         ))}
+        
+        {streaming && (
+          <div className="flex justify-start">
+            <div className="bg-gray-800 rounded-lg px-4 py-2">
+              <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse" />
+            </div>
+          </div>
+        )}
+        
         <div ref={messagesEndRef} />
       </div>
 
@@ -235,12 +298,12 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={connected ? `Message ${agentName}...` : 'Connecting...'}
-            disabled={!connected}
+            disabled={!connected || streaming}
             className="flex-1 px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={!connected || !input.trim()}
+            disabled={!connected || !input.trim() || streaming}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
           >
             Send

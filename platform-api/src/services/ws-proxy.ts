@@ -4,15 +4,25 @@ import { verifyToken } from '@clerk/backend';
 import { db } from '../db/index.js';
 import { agents } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { randomUUID } from 'crypto';
+
+const PROTOCOL_VERSION = 3;
 
 interface AgentConnection {
   userId: string;
   agentId: string;
   clientWs: WebSocket;
   agentWs: WebSocket | null;
+  connected: boolean;
+  pendingMessages: string[];
+  requestId: number;
 }
 
 const connections = new Map<WebSocket, AgentConnection>();
+
+function generateRequestId(conn: AgentConnection): string {
+  return `req-${++conn.requestId}`;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function setupWebSocketProxy(server: any) {
@@ -87,36 +97,112 @@ export function setupWebSocketProxy(server: any) {
         agentId,
         clientWs,
         agentWs,
+        connected: false,
+        pendingMessages: [],
+        requestId: 0,
       };
       connections.set(clientWs, conn);
 
       // Handle agent connection events
       agentWs.on('open', () => {
-        console.log(`[ws-proxy] Connected to agent ${agentId}`);
+        console.log(`[ws-proxy] WebSocket open to agent ${agentId}, sending connect frame`);
+        
+        // Send the OpenClaw connect frame as first message
+        const connectFrame = {
+          type: 'req',
+          id: generateRequestId(conn),
+          method: 'connect',
+          params: {
+            minProtocol: PROTOCOL_VERSION,
+            maxProtocol: PROTOCOL_VERSION,
+            client: {
+              id: 'myintell-webchat',
+              version: '1.0.0',
+              platform: 'web',
+              mode: 'frontend',
+              instanceId: randomUUID(),
+            },
+            auth: {
+              // Using trusted-proxy mode - the userId is passed via header
+              // OpenClaw should be configured with webchat.auth: trusted-proxy
+            },
+          },
+        };
+        
+        agentWs.send(JSON.stringify(connectFrame));
       });
 
       agentWs.on('message', (data) => {
-        // Parse message to handle auth challenges
         try {
           const msg = JSON.parse(data.toString());
           
-          // Handle connect challenge - respond with trusted proxy auth
-          if (msg.type === 'event' && msg.event === 'connect.challenge') {
-            console.log(`[ws-proxy] Received challenge, responding for user ${userId}`);
-            agentWs.send(JSON.stringify({
-              type: 'auth',
-              mode: 'trusted-proxy',
-              nonce: msg.payload?.nonce,
-            }));
-            return; // Don't forward challenge to client
+          // Handle connect response
+          if (msg.type === 'res' && msg.id && !conn.connected) {
+            if (msg.ok) {
+              console.log(`[ws-proxy] Connected to agent ${agentId} successfully`);
+              conn.connected = true;
+              
+              // Send any pending messages
+              for (const pending of conn.pendingMessages) {
+                sendChatMessage(conn, pending);
+              }
+              conn.pendingMessages = [];
+              
+              // Notify client they're connected
+              clientWs.send(JSON.stringify({
+                type: 'connected',
+                agentId: agentId,
+              }));
+            } else {
+              console.error(`[ws-proxy] Connect failed:`, msg.error);
+              clientWs.close(4003, msg.error?.message || 'Connect failed');
+            }
+            return;
           }
+          
+          // Handle chat events from OpenClaw
+          if (msg.type === 'event') {
+            // Forward relevant events to client in a simplified format
+            if (msg.event === 'chat.chunk') {
+              clientWs.send(JSON.stringify({
+                type: 'chunk',
+                payload: msg.payload,
+              }));
+            } else if (msg.event === 'chat.message') {
+              clientWs.send(JSON.stringify({
+                type: 'message',
+                payload: msg.payload,
+              }));
+            } else if (msg.event === 'chat.done') {
+              clientWs.send(JSON.stringify({
+                type: 'done',
+                payload: msg.payload,
+              }));
+            } else if (msg.event === 'chat.error') {
+              clientWs.send(JSON.stringify({
+                type: 'error',
+                payload: msg.payload,
+              }));
+            }
+            return;
+          }
+          
+          // Handle chat.send response
+          if (msg.type === 'res') {
+            if (!msg.ok) {
+              console.error(`[ws-proxy] Request failed:`, msg.error);
+              clientWs.send(JSON.stringify({
+                type: 'error',
+                error: msg.error?.message || 'Request failed',
+              }));
+            }
+            // Success responses for chat.send are handled via events
+            return;
+          }
+          
         } catch {
-          // Not JSON, forward as-is
-        }
-        
-        // Forward agent messages to client
-        if (clientWs.readyState === WebSocket.OPEN) {
-          clientWs.send(data);
+          // Not JSON or parse error, log and ignore
+          console.error(`[ws-proxy] Failed to parse agent message:`, data.toString().substring(0, 200));
         }
       });
 
@@ -138,9 +224,20 @@ export function setupWebSocketProxy(server: any) {
 
       // Handle client events
       clientWs.on('message', (data) => {
-        // Forward client messages to agent
-        if (agentWs.readyState === WebSocket.OPEN) {
-          agentWs.send(data);
+        try {
+          const msg = JSON.parse(data.toString());
+          
+          // Client sends simple messages, we convert to OpenClaw format
+          if (msg.type === 'message' && msg.content) {
+            if (conn.connected && conn.agentWs?.readyState === WebSocket.OPEN) {
+              sendChatMessage(conn, msg.content);
+            } else {
+              // Queue message until connected
+              conn.pendingMessages.push(msg.content);
+            }
+          }
+        } catch {
+          console.error(`[ws-proxy] Failed to parse client message`);
         }
       });
 
@@ -167,4 +264,25 @@ export function setupWebSocketProxy(server: any) {
   });
 
   console.log('🔌 WebSocket proxy ready at /ws/agent');
+}
+
+function sendChatMessage(conn: AgentConnection, content: string) {
+  if (!conn.agentWs || conn.agentWs.readyState !== WebSocket.OPEN) {
+    console.error(`[ws-proxy] Cannot send: agent not connected`);
+    return;
+  }
+  
+  const chatFrame = {
+    type: 'req',
+    id: generateRequestId(conn),
+    method: 'chat.send',
+    params: {
+      sessionKey: 'agent:main:main',
+      message: content,
+      idempotencyKey: randomUUID(),
+    },
+  };
+  
+  console.log(`[ws-proxy] Sending chat message to agent ${conn.agentId}`);
+  conn.agentWs.send(JSON.stringify(chatFrame));
 }

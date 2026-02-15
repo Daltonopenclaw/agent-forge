@@ -375,7 +375,7 @@ _This is ${config.name}, powered by myintell.ai_
                 name: 'openclaw',
                 image: 'ghcr.io/openclaw/openclaw:latest',
                 ports: [
-                  { containerPort: 4444 },
+                  { containerPort: 18789, name: 'gateway' },
                 ],
                 env: [
                   { name: 'OPENCLAW_STATE_DIR', value: '/state' },
@@ -402,7 +402,7 @@ _This is ${config.name}, powered by myintell.ai_
                 livenessProbe: {
                   httpGet: {
                     path: '/health',
-                    port: 4444 as any,
+                    port: 18789 as any,
                   },
                   initialDelaySeconds: 60,
                   periodSeconds: 30,
@@ -411,7 +411,7 @@ _This is ${config.name}, powered by myintell.ai_
                 readinessProbe: {
                   httpGet: {
                     path: '/health',
-                    port: 4444 as any,
+                    port: 18789 as any,
                   },
                   initialDelaySeconds: 30,
                   periodSeconds: 10,
@@ -472,7 +472,7 @@ _This is ${config.name}, powered by myintell.ai_
           app: 'gateway',
         },
         ports: [
-          { port: 4444, targetPort: 4444 as any },
+          { port: 18789, targetPort: 18789 as any },
         ],
         type: 'ClusterIP',
       },

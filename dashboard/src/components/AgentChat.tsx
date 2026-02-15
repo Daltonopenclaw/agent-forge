@@ -61,9 +61,15 @@ export function AgentChat({ agentId, agentName, agentAvatar }: AgentChatProps) {
         setError(null);
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = async (event) => {
         try {
-          const data = JSON.parse(event.data);
+          // Handle both text and Blob data
+          let rawData = event.data;
+          if (rawData instanceof Blob) {
+            rawData = await rawData.text();
+          }
+          
+          const data = JSON.parse(rawData);
           
           // Handle OpenClaw message format
           if (data.type === 'message' || data.type === 'chunk') {

@@ -532,7 +532,7 @@ _This is ${config.name}, powered by myintell.ai_
     await this.networkApi.createNamespacedNetworkPolicy({ namespace, body: allowIngress });
   }
 
-  private async waitForReady(namespace: string, timeoutMs: number = 60000): Promise<void> {
+  private async waitForReady(namespace: string, timeoutMs: number = 180000): Promise<void> { // 3 minutes for cold start
     const startTime = Date.now();
     
     while (Date.now() - startTime < timeoutMs) {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../db/index.js';
 import { agents, tenants } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, ne, isNull } from 'drizzle-orm';
 import { provisioner, type AgentConfig, type ProvisioningStatus } from '../services/provisioner.js';
 
 export const agentsRouter = new Hono();
@@ -46,7 +46,10 @@ agentsRouter.get('/', async (c) => {
   const tenantAgents = await db
     .select()
     .from(agents)
-    .where(eq(agents.tenantId, tenantId));
+    .where(and(
+      eq(agents.tenantId, tenantId),
+      ne(agents.status, 'deleted')
+    ));
   
   return c.json({ agents: tenantAgents });
 });

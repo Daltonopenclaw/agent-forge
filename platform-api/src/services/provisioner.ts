@@ -673,53 +673,49 @@ _This is ${config.name}, powered by myintell.ai_
     // Generate new config.json5
     const newConfig = this.generateConfigJson5(parsed);
 
-    // Update ConfigMap
-    await this.coreApi.patchNamespacedConfigMap({
+    // Update ConfigMap - read, modify, replace
+    const existingCm = await this.coreApi.readNamespacedConfigMap({
       name: 'gateway-config',
       namespace,
-      body: {
-        data: {
-          'config.json5': newConfig,
-        },
-      },
-    }, undefined, undefined, undefined, undefined, undefined, {
-      headers: { 'Content-Type': 'application/strategic-merge-patch+json' },
+    });
+    existingCm.data = existingCm.data || {};
+    existingCm.data['config.json5'] = newConfig;
+    await this.coreApi.replaceNamespacedConfigMap({
+      name: 'gateway-config',
+      namespace,
+      body: existingCm,
     });
 
-    // Restart the deployment to pick up new config
-    await this.appsApi.patchNamespacedDeployment({
-      name: 'gateway',
+    // Restart the deployment by deleting pods
+    const pods = await this.coreApi.listNamespacedPod({
       namespace,
-      body: {
-        spec: {
-          template: {
-            metadata: {
-              annotations: {
-                'myintell.ai/restartedAt': new Date().toISOString(),
-              },
-            },
-          },
-        },
-      },
-    }, undefined, undefined, undefined, undefined, undefined, {
-      headers: { 'Content-Type': 'application/strategic-merge-patch+json' },
+      labelSelector: 'app=gateway',
     });
+    for (const pod of pods.items) {
+      if (pod.metadata?.name) {
+        await this.coreApi.deleteNamespacedPod({
+          name: pod.metadata.name,
+          namespace,
+        });
+      }
+    }
   }
 
   private async updateChannelSecret(namespace: string, key: string, value: string): Promise<void> {
     const encodedValue = Buffer.from(value).toString('base64');
     
     try {
-      await this.coreApi.patchNamespacedSecret({
+      // Read existing secret, add key, replace
+      const existing = await this.coreApi.readNamespacedSecret({
         name: 'agent-credentials',
         namespace,
-        body: {
-          data: {
-            [key]: encodedValue,
-          },
-        },
-      }, undefined, undefined, undefined, undefined, undefined, {
-        headers: { 'Content-Type': 'application/strategic-merge-patch+json' },
+      });
+      existing.data = existing.data || {};
+      existing.data[key] = encodedValue;
+      await this.coreApi.replaceNamespacedSecret({
+        name: 'agent-credentials',
+        namespace,
+        body: existing,
       });
     } catch (error) {
       console.error('Failed to update channel secret:', error);

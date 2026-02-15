@@ -386,7 +386,8 @@ _This is ${config.name}, powered by myintell.ai_
                 ],
                 volumeMounts: [
                   { name: 'state', mountPath: '/state' },
-                  { name: 'config', mountPath: '/state/workspace', subPath: 'workspace' },
+                  { name: 'workspace', mountPath: '/state/workspace' },
+                  { name: 'gateway-config', mountPath: '/state/config.json5', subPath: 'config.json5' },
                 ],
                 resources: {
                   requests: {
@@ -424,9 +425,27 @@ _This is ${config.name}, powered by myintell.ai_
                 },
               },
               {
-                name: 'config',
+                name: 'workspace',
                 configMap: {
                   name: 'agent-config',
+                  items: [
+                    { key: 'IDENTITY.md', path: 'IDENTITY.md' },
+                    { key: 'SOUL.md', path: 'SOUL.md' },
+                    { key: 'AGENTS.md', path: 'AGENTS.md' },
+                    { key: 'USER.md', path: 'USER.md' },
+                    { key: 'MEMORY.md', path: 'MEMORY.md' },
+                    { key: 'TOOLS.md', path: 'TOOLS.md' },
+                    { key: 'HEARTBEAT.md', path: 'HEARTBEAT.md' },
+                  ],
+                },
+              },
+              {
+                name: 'gateway-config',
+                configMap: {
+                  name: 'agent-config',
+                  items: [
+                    { key: 'config.json5', path: 'config.json5' },
+                  ],
                 },
               },
             ],

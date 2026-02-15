@@ -108,6 +108,8 @@ export function setupWebSocketProxy(server: any) {
         console.log(`[ws-proxy] WebSocket open to agent ${agentId}, sending connect frame`);
         
         // Send the OpenClaw connect frame as first message
+        // Valid client.id: webchat, webchat-ui, gateway-client, cli, etc.
+        // Valid client.mode: webchat, backend, cli, probe, etc.
         const connectFrame = {
           type: 'req',
           id: generateRequestId(conn),
@@ -116,16 +118,13 @@ export function setupWebSocketProxy(server: any) {
             minProtocol: PROTOCOL_VERSION,
             maxProtocol: PROTOCOL_VERSION,
             client: {
-              id: 'myintell-webchat',
+              id: 'webchat',
               version: '1.0.0',
               platform: 'web',
-              mode: 'frontend',
+              mode: 'webchat',
               instanceId: randomUUID(),
             },
-            auth: {
-              // Using trusted-proxy mode - the userId is passed via header
-              // OpenClaw should be configured with webchat.auth: trusted-proxy
-            },
+            // Auth handled via trusted-proxy headers
           },
         };
         

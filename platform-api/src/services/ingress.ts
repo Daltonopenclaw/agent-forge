@@ -53,7 +53,7 @@ export class IngressManager {
             services: [
               {
                 name: 'gateway',
-                port: 4444,
+                port: 18789,
               },
             ],
             middlewares: [

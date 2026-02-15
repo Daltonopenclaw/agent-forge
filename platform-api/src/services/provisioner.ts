@@ -542,7 +542,7 @@ _This is ${config.name}, powered by myintell.ai_
         policyTypes: ['Ingress'],
         ingress: [
           {
-            from: [
+            _from: [
               {
                 namespaceSelector: {
                   matchLabels: {

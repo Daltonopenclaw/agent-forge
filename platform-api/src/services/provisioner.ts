@@ -101,6 +101,10 @@ export class AgentProvisioner {
       // Stage 7: Create IngressRoute for external access
       onProgress({ stage: 'health', progress: 95, message: 'Setting up external access...' });
       const agentSlug = this.slugify(config.name) + '-' + config.agentId.substring(0, 8);
+      
+      // Copy wildcard TLS secret to agent namespace
+      await this.copyTlsSecret(namespace);
+      
       await ingressManager.createAgentIngress(namespace, agentSlug);
 
       onProgress({ stage: 'complete', progress: 100, message: 'Agent is ready!' });
@@ -381,6 +385,7 @@ _This is ${config.name}, powered by myintell.ai_
                 env: [
                   { name: 'OPENCLAW_STATE_DIR', value: '/state' },
                   { name: 'OPENCLAW_WORKSPACE', value: '/state/workspace' },
+                  { name: 'OPENCLAW_GATEWAY_BIND', value: 'lan' },
                 ],
                 envFrom: [
                   { secretRef: { name: 'agent-credentials' } },
@@ -576,6 +581,33 @@ _This is ${config.name}, powered by myintell.ai_
     }
     
     throw new Error('Timeout waiting for gateway to be ready');
+  }
+
+  private async copyTlsSecret(namespace: string): Promise<void> {
+    try {
+      // Read the wildcard TLS secret from the myintell namespace
+      const sourceSecret = await this.coreApi.readNamespacedSecret({
+        name: 'wildcard-myintell-tls',
+        namespace: 'myintell',
+      });
+
+      // Create a copy in the target namespace
+      const targetSecret: k8s.V1Secret = {
+        apiVersion: 'v1',
+        kind: 'Secret',
+        metadata: {
+          name: 'wildcard-myintell-tls',
+          namespace,
+        },
+        type: sourceSecret.type,
+        data: sourceSecret.data,
+      };
+
+      await this.coreApi.createNamespacedSecret({ namespace, body: targetSecret });
+    } catch (error) {
+      // Secret might already exist or source might be missing
+      console.log(`Warning: Could not copy TLS secret to ${namespace}:`, error);
+    }
   }
 }
 

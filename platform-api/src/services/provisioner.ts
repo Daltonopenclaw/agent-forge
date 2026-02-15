@@ -400,20 +400,20 @@ _This is ${config.name}, powered by myintell.ai_
                   },
                 },
                 livenessProbe: {
-                  tcpSocket: {
-                    port: 18789 as any,
+                  exec: {
+                    command: ['curl', '-sf', 'http://127.0.0.1:18789/'],
                   },
                   initialDelaySeconds: 60,
                   periodSeconds: 30,
-                  timeoutSeconds: 5,
+                  timeoutSeconds: 10,
                 },
                 readinessProbe: {
-                  tcpSocket: {
-                    port: 18789 as any,
+                  exec: {
+                    command: ['curl', '-sf', 'http://127.0.0.1:18789/'],
                   },
                   initialDelaySeconds: 30,
                   periodSeconds: 10,
-                  timeoutSeconds: 5,
+                  timeoutSeconds: 10,
                 },
               },
             ],

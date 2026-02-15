@@ -138,7 +138,15 @@ export interface Agent {
   name: string;
   model: string;
   systemPrompt: string;
-  status: 'idle' | 'running' | 'error' | 'deleted';
+  status: 'idle' | 'running' | 'error' | 'deleted' | 'provisioning';
   lastActiveAt: string | null;
   createdAt: string;
+  config?: {
+    avatar?: string;
+    personalityType?: string;
+    modelTier?: string;
+    namespace?: string;
+    channels?: Record<string, any>;
+    error?: string;
+  };
 }

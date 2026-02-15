@@ -525,7 +525,7 @@ _This is ${config.name}, powered by myintell.ai_
 
     await this.networkApi.createNamespacedNetworkPolicy({ namespace, body: allowEgress });
 
-    // Allow ingress from platform namespace
+    // Allow ingress from platform and traefik namespaces
     const allowIngress: k8s.V1NetworkPolicy = {
       apiVersion: 'networking.k8s.io/v1',
       kind: 'NetworkPolicy',
@@ -542,11 +542,18 @@ _This is ${config.name}, powered by myintell.ai_
         policyTypes: ['Ingress'],
         ingress: [
           {
-            _from: [
+            from: [
               {
                 namespaceSelector: {
                   matchLabels: {
                     'app.kubernetes.io/name': 'myintell',
+                  },
+                },
+              },
+              {
+                namespaceSelector: {
+                  matchLabels: {
+                    'app.kubernetes.io/name': 'traefik',
                   },
                 },
               },

@@ -205,8 +205,21 @@ agentsRouter.get('/:id', async (c) => {
   if (!tenant) {
     return c.json({ error: 'Access denied' }, 403);
   }
+
+  // Format response
+  const config = (agent.config || {}) as Record<string, any>;
+  const agentSlug = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + agent.id.substring(0, 8);
   
-  return c.json({ agent });
+  return c.json({
+    id: agent.id,
+    name: agent.name,
+    avatar: config.avatar || '🤖',
+    status: agent.status,
+    subdomain: `agent-${agentSlug}`,
+    model: agent.model,
+    channels: config.channels || { webchat: { enabled: true } },
+    createdAt: agent.createdAt,
+  });
 });
 
 // Delete agent
@@ -251,5 +264,136 @@ agentsRouter.delete('/:id', async (c) => {
     .set({ status: 'deleted', deletedAt: new Date() })
     .where(eq(agents.id, id));
   
+  return c.json({ success: true });
+});
+
+// ============ Channel Management ============
+
+const telegramConnectSchema = z.object({
+  botToken: z.string().min(40).max(100),
+});
+
+// Connect Telegram
+agentsRouter.post('/:id/channels/telegram', zValidator('json', telegramConnectSchema), async (c) => {
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+  const { botToken } = c.req.valid('json');
+  
+  const [agent] = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.id, id))
+    .limit(1);
+  
+  if (!agent) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+  
+  // Verify ownership
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(and(eq(tenants.id, agent.tenantId), eq(tenants.ownerId, auth.userId)))
+    .limit(1);
+  
+  if (!tenant) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+
+  // Validate bot token by calling Telegram API
+  try {
+    const telegramRes = await fetch(`https://api.telegram.org/bot${botToken}/getMe`);
+    const telegramData = await telegramRes.json() as { ok: boolean; result?: { username: string } };
+    
+    if (!telegramData.ok) {
+      return c.json({ error: 'Invalid bot token' }, 400);
+    }
+
+    const botUsername = telegramData.result?.username;
+
+    // Update agent config in K8s
+    const namespace = (agent.config as any)?.namespace;
+    if (namespace) {
+      await provisioner.updateAgentChannel(namespace, 'telegram', {
+        enabled: true,
+        botToken,
+      });
+    }
+
+    // Update agent record
+    const currentConfig = (agent.config || {}) as Record<string, any>;
+    await db
+      .update(agents)
+      .set({
+        config: {
+          ...currentConfig,
+          channels: {
+            ...(currentConfig.channels || {}),
+            telegram: { enabled: true, botUsername },
+          },
+        },
+      })
+      .where(eq(agents.id, id));
+
+    return c.json({ 
+      success: true, 
+      botUsername,
+      message: `Connected to @${botUsername}. Your agent will now respond to Telegram messages.`,
+    });
+  } catch (error) {
+    console.error('Telegram connect error:', error);
+    return c.json({ error: 'Failed to connect Telegram' }, 500);
+  }
+});
+
+// Disconnect Telegram
+agentsRouter.delete('/:id/channels/telegram', async (c) => {
+  const auth = c.get('auth');
+  const id = c.req.param('id');
+  
+  const [agent] = await db
+    .select()
+    .from(agents)
+    .where(eq(agents.id, id))
+    .limit(1);
+  
+  if (!agent) {
+    return c.json({ error: 'Agent not found' }, 404);
+  }
+  
+  // Verify ownership
+  const [tenant] = await db
+    .select()
+    .from(tenants)
+    .where(and(eq(tenants.id, agent.tenantId), eq(tenants.ownerId, auth.userId)))
+    .limit(1);
+  
+  if (!tenant) {
+    return c.json({ error: 'Access denied' }, 403);
+  }
+
+  // Update K8s config to disable Telegram
+  const namespace = (agent.config as any)?.namespace;
+  if (namespace) {
+    await provisioner.updateAgentChannel(namespace, 'telegram', {
+      enabled: false,
+    });
+  }
+
+  // Update agent record
+  const currentConfig = (agent.config || {}) as Record<string, any>;
+  await db
+    .update(agents)
+    .set({
+      config: {
+        ...currentConfig,
+        channels: {
+          ...(currentConfig.channels || {}),
+          telegram: { enabled: false },
+        },
+      },
+    })
+    .where(eq(agents.id, id));
+
   return c.json({ success: true });
 });

@@ -111,18 +111,17 @@ export default function AgentsPage() {
           ) : (
             <div className="space-y-3">
               {agents.map((agent) => (
-                <div 
+                <Link 
                   key={agent.id} 
-                  className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50"
+                  href={`/dashboard/agents/${agent.id}`}
+                  className="flex items-center justify-between p-4 rounded-lg bg-slate-700/50 hover:bg-slate-700 transition-colors cursor-pointer"
                 >
-                  <div className="flex-1">
-                    <p className="font-medium text-white">{agent.name}</p>
-                    <p className="text-sm text-slate-400">{agent.model}</p>
-                    {agent.systemPrompt && (
-                      <p className="text-sm text-slate-500 mt-1 truncate max-w-md">
-                        {agent.systemPrompt}
-                      </p>
-                    )}
+                  <div className="flex items-center gap-3 flex-1">
+                    <div className="text-2xl">{(agent.config as any)?.avatar || '🤖'}</div>
+                    <div>
+                      <p className="font-medium text-white">{agent.name}</p>
+                      <p className="text-sm text-slate-400">{agent.model || 'Claude Sonnet'}</p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -130,32 +129,15 @@ export default function AgentsPage() {
                         ? 'bg-green-500/20 text-green-400' 
                         : agent.status === 'error'
                         ? 'bg-red-500/20 text-red-400'
+                        : agent.status === 'provisioning'
+                        ? 'bg-blue-500/20 text-blue-400'
                         : 'bg-slate-500/20 text-slate-400'
                     }`}>
                       {agent.status}
                     </span>
-                    {agent.status === 'idle' && (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        className="border-slate-600 text-slate-300"
-                        onClick={() => handleWake(agent.id)}
-                        disabled={actionLoading === agent.id}
-                      >
-                        {actionLoading === agent.id ? 'Waking...' : 'Wake'}
-                      </Button>
-                    )}
-                    <Button 
-                      size="sm" 
-                      variant="ghost"
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                      onClick={() => handleDelete(agent.id, agent.name)}
-                      disabled={actionLoading === agent.id}
-                    >
-                      Delete
-                    </Button>
+                    <span className="text-slate-400">→</span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
